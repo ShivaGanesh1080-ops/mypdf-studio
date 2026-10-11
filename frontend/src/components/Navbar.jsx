@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { FileText, Key, ShieldCheck, Sparkles, HelpCircle, Layers, Cpu } from 'lucide-react';
+import { 
+  FileText, Key, ShieldCheck, Sparkles, 
+  Wrench, LayoutGrid, FilePlus2, ScanText, CheckCircle2, ChevronRight
+} from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, backendHealthy, onOpenComparison }) {
+export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, backendHealthy }) {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [tempKey, setTempKey] = useState(apiKey || '');
 
@@ -12,11 +15,11 @@ export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, bac
   };
 
   const navItems = [
-    { id: 'core', label: 'Core Tools', icon: '🛠️' },
-    { id: 'visual', label: 'Visual Page Studio', icon: '📑' },
-    { id: 'converter', label: 'Create & Convert', icon: '➕' },
-    { id: 'ocr', label: 'OCR Studio', icon: '👁️' },
-    { id: 'ai', label: 'AI Document Assistant', icon: '🤖' },
+    { id: 'core', label: 'Core Tools', icon: Wrench },
+    { id: 'visual', label: 'Visual Page Studio', icon: LayoutGrid },
+    { id: 'converter', label: 'Create & Convert', icon: FilePlus2 },
+    { id: 'ocr', label: 'OCR Studio', icon: ScanText },
+    { id: 'ai', label: 'AI Document Assistant', icon: Sparkles },
   ];
 
   return (
@@ -30,8 +33,8 @@ export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, bac
               className="flex items-center gap-3 cursor-pointer group select-none" 
               onClick={() => setActiveTab('core')}
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-red-500 flex items-center justify-center text-white shadow-md shadow-red-200 group-hover:scale-105 group-active:scale-95 transition-all duration-200">
-                <FileText className="w-6 h-6 stroke-[2.2]" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 via-red-500 to-amber-500 flex items-center justify-center text-white shadow-md shadow-red-200 group-hover:scale-105 group-active:scale-95 transition-all duration-200">
+                <FileText className="w-5 h-5 stroke-[2.4]" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -44,39 +47,39 @@ export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, bac
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <p className="text-[11px] text-slate-500 font-medium">100% Private • In-Browser Engine</p>
+                  <p className="text-[11px] text-slate-500 font-medium">100% Private • In-Browser Processing</p>
                 </div>
               </div>
             </div>
 
             {/* Navigation Tabs (Desktop & Tablet) */}
-            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
-                    activeTab === item.id
-                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200/60 scale-[1.02]'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                  }`}
-                >
-                  <span className="text-sm">{item.icon}</span>
-                  <span>{item.label}</span>
-                </button>
-              ))}
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-xl border border-slate-200/80">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80 scale-[1.02]'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 transition-colors ${isActive ? 'text-red-600' : 'text-slate-500'}`} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
             </nav>
 
             {/* Right Action buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onOpenComparison}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 hover:text-slate-900 transition-all border border-slate-200 shadow-xs cursor-pointer active:scale-95"
-                title="View comparison between iLovePDF and MyPDF"
-              >
-                <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-                <span>iLovePDF vs MyPDF</span>
-              </button>
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/80 border border-emerald-200/70 text-[11px] font-semibold text-emerald-800">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Zero Server Uploads</span>
+              </div>
 
               <button
                 data-key-btn
@@ -89,6 +92,7 @@ export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, bac
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
                     : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
                 }`}
+                title="Configure Google Gemini API Key for smart document chat and analysis"
               >
                 <Key className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{apiKey ? 'Gemini AI Ready' : 'Setup Gemini AI'}</span>
@@ -99,21 +103,25 @@ export default function Navbar({ activeTab, setActiveTab, apiKey, setApiKey, bac
         </div>
 
         {/* Mobile Navigation Tabs (Scrollable pill bar with hidden scrollbar) */}
-        <div className="lg:hidden flex items-center overflow-x-auto px-3 py-2 bg-slate-50/90 border-t border-slate-200/80 gap-1.5 no-scrollbar scroll-smooth">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 cursor-pointer ${
-                activeTab === item.id
-                  ? 'bg-red-600 text-white shadow-xs scale-[1.02]'
-                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
-            </button>
-          ))}
+        <div className="lg:hidden flex items-center overflow-x-auto px-3 py-2 bg-slate-50/95 border-t border-slate-200/80 gap-1.5 no-scrollbar scroll-smooth">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 cursor-pointer ${
+                  isActive
+                    ? 'bg-red-600 text-white shadow-xs scale-[1.02]'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </div>
       </header>
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   FileText, Image as ImageIcon, FileCode, FileDown, 
   Upload, Download, Loader2, CheckCircle, AlertCircle, ArrowRight, Copy,
-  Presentation, Sheet, FileType, Settings2, Trash2, ArrowLeft
+  Presentation, Sheet, FileType, Settings2, Trash2, ArrowLeft, FilePlus2, ArrowRightLeft
 } from 'lucide-react';
 import { clientImagesToPdf, clientTextToPdf } from '../services/clientPdfService';
 
@@ -262,26 +262,28 @@ export default function FormatConverter() {
 
       {/* Main Switcher: Create PDF vs Convert From PDF */}
       <div className="flex justify-center">
-        <div className="bg-slate-200/80 p-1 rounded-2xl flex flex-col sm:flex-row items-center gap-1 border border-slate-300/60 shadow-xs w-full sm:w-auto">
+        <div className="bg-slate-200/70 p-1.5 rounded-2xl flex flex-col sm:flex-row items-center gap-1.5 border border-slate-300/60 shadow-xs w-full sm:w-auto">
           <button
             onClick={() => handleCategorySwitch('to_pdf')}
-            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'to_pdf'
                 ? 'bg-red-600 text-white shadow-sm scale-[1.01]'
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/40'
             }`}
           >
-            ➕ Create PDF (From Images, Word, PPT, Excel, Text)
+            <FilePlus2 className="w-4 h-4" />
+            <span>Create PDF (Images, Word, PPT, Excel, Text)</span>
           </button>
           <button
             onClick={() => handleCategorySwitch('from_pdf')}
-            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'from_pdf'
                 ? 'bg-red-600 text-white shadow-sm scale-[1.01]'
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/40'
             }`}
           >
-            🔄 Convert From PDF (To Word, Images, Text)
+            <ArrowRightLeft className="w-4 h-4" />
+            <span>Convert From PDF (To Word, Images, Text)</span>
           </button>
         </div>
       </div>

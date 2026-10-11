@@ -211,36 +211,39 @@ export default function CoreTools() {
         </div>
 
         {/* Client vs Server Processing Toggle */}
-        <div className="flex justify-center mb-6">
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200 text-xs">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mb-6">
+          <div className="bg-slate-100/90 p-1 rounded-xl flex items-center border border-slate-200 text-xs shadow-2xs">
             <button
               type="button"
               onClick={() => setEngineMode('client')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 engineMode === 'client'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <span>⚡ Client Device Mode</span>
-              <span className="text-[10px] font-normal opacity-90">(Your CPU & RAM • 0 Server Load)</span>
+              <span className="hidden md:inline text-[10px] font-normal opacity-90">(Your CPU & RAM)</span>
             </button>
             <button
               type="button"
               onClick={() => setEngineMode('server')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 engineMode === 'server'
                   ? 'bg-red-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <span>🚀 Server Mode</span>
-              <span className="text-[10px] font-normal opacity-90">(FastAPI Engine)</span>
+              <span className="hidden md:inline text-[10px] font-normal opacity-90">(Python Engine)</span>
             </button>
           </div>
+          <span className="text-[11px] text-slate-400 font-medium">
+            {engineMode === 'client' ? '• 0 server load & instant execution' : '• Deep PyMuPDF engine processing'}
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {tools.map((tool) => {
             const Icon = tool.icon;
             const isSelected = selectedTool === tool.id;
@@ -254,7 +257,7 @@ export default function CoreTools() {
                   setErrorMsg('');
                   setCompressStats(null);
                 }}
-                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer interactive-card ${
+                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer min-h-[140px] interactive-card ${
                   isSelected
                     ? 'border-red-500 bg-red-50/40 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
                     : 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-md'
