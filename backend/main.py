@@ -2,6 +2,8 @@ import os
 import shutil
 import tempfile
 import json
+import uuid
+import re
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,33 +11,60 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from services import core_service, visual_service, converter_service, ocr_service, ai_service
 
-app = FastAPI(title="MyPDF Studio API", version="1.0.0")
+app = FastAPI(
+    title="MyPDF Studio API", 
+    version="1.0.0",
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json"
+)
 
-# Enable CORS for local Vite dev server and production
+# Robust CORS configuration: Local dev + Vercel production domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|.*\.vercel\.app)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["X-Original-Size", "X-New-Size", "X-Saved-Percent", "Content-Disposition"]
 )
 
 TEMP_DIR = os.path.join(tempfile.gettempdir(), "mypdf_studio")
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-def cleanup_file(path: str):
-    """Background task to remove temporary files after response is sent."""
+def create_job_workspace() -> str:
+    """Creates a strictly isolated, per-request temporary workspace directory."""
+    job_id = uuid.uuid4().hex
+    job_dir = os.path.join(TEMP_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    return job_dir
+
+def cleanup_workspace(job_dir: str):
+    """Reliably removes the entire request workspace and all internal files."""
     try:
-        if os.path.isfile(path):
-            os.remove(path)
-        elif os.path.isdir(path):
-            shutil.rmtree(path)
+        if os.path.exists(job_dir):
+            shutil.rmtree(job_dir, ignore_errors=True)
     except Exception:
         pass
 
+def sanitize_filename(name: Optional[str], default: str = "document.pdf") -> str:
+    """Sanitizes user filename strictly for HTTP Content-Disposition headers."""
+    if not name:
+        return default
+    basename = os.path.basename(name)
+    clean = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', basename)
+    return clean or default
+
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "app": "MyPDF Studio", "version": "1.0.0"}
+    return {
+        "status": "ok", 
+        "app": "MyPDF Studio", 
+        "version": "1.0.0",
+        "features": {
+            "local_capable": ["merge", "split", "rotate", "delete", "watermark", "compress", "img2pdf", "txt2pdf", "ocr"],
+            "server_capable": ["protect_aes256", "unlock", "docx2pdf", "pptx2pdf", "excel2pdf", "pdf2docx", "pdf2img"]
+        }
+    }
 
 # ----------------- CORE PDF OPERATIONS -----------------
 
@@ -44,27 +73,24 @@ async def api_merge_pdfs(background_tasks: BackgroundTasks, files: List[UploadFi
     if len(files) < 2:
         raise HTTPException(status_code=400, detail="Please upload at least 2 PDF files to merge.")
     
+    job_dir = create_job_workspace()
     saved_paths = []
     try:
-        for f in files:
-            temp_path = os.path.join(TEMP_DIR, f"merge_{f.filename}")
+        for idx, f in enumerate(files):
+            temp_path = os.path.join(job_dir, f"input_{idx}.pdf")
+            content = await f.read()
             with open(temp_path, "wb") as out:
-                content = await f.read()
                 out.write(content)
             saved_paths.append(temp_path)
             
-        output_file = os.path.join(TEMP_DIR, "merged_document.pdf")
+        output_file = os.path.join(job_dir, "output.pdf")
         core_service.merge_pdfs(saved_paths, output_file)
         
-        for p in saved_paths:
-            cleanup_file(p)
-            
-        background_tasks.add_task(cleanup_file, output_file)
+        background_tasks.add_task(cleanup_workspace, job_dir)
         return FileResponse(output_file, media_type="application/pdf", filename="merged_document.pdf")
     except Exception as e:
-        for p in saved_paths:
-            cleanup_file(p)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Document merge failed: " + str(e))
 
 @app.post("/api/core/split")
 async def api_split_pdf(
@@ -72,19 +98,21 @@ async def api_split_pdf(
     file: UploadFile = File(...),
     page_range: str = Form("1")
 ):
-    temp_input = os.path.join(TEMP_DIR, f"input_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"split_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         core_service.split_pdf(temp_input, page_range, output_file)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"split_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"split_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Document split failed: " + str(e))
 
 @app.post("/api/core/rotate")
 async def api_rotate_pdf(
@@ -93,19 +121,21 @@ async def api_rotate_pdf(
     angle: int = Form(90),
     page_range: str = Form("all")
 ):
-    temp_input = os.path.join(TEMP_DIR, f"rotate_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"rotated_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         core_service.rotate_pdf(temp_input, angle, page_range, output_file)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"rotated_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"rotated_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Document rotation failed: " + str(e))
 
 @app.post("/api/core/delete-pages")
 async def api_delete_pages(
@@ -113,19 +143,21 @@ async def api_delete_pages(
     file: UploadFile = File(...),
     pages_to_delete: str = Form(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"del_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"trimmed_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         core_service.delete_pages(temp_input, pages_to_delete, output_file)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"trimmed_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"trimmed_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Page deletion failed: " + str(e))
 
 @app.post("/api/core/compress")
 async def api_compress_pdf(
@@ -133,26 +165,26 @@ async def api_compress_pdf(
     file: UploadFile = File(...),
     quality: str = Form("medium")
 ):
-    temp_input = os.path.join(TEMP_DIR, f"comp_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"compressed_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         stats = core_service.compress_pdf(temp_input, quality, output_file)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
+        background_tasks.add_task(cleanup_workspace, job_dir)
         
-        # We can return the file directly and pass savings info in headers
-        response = FileResponse(output_file, media_type="application/pdf", filename=f"compressed_{file.filename}")
+        safe_name = f"compressed_{sanitize_filename(file.filename)}"
+        response = FileResponse(output_file, media_type="application/pdf", filename=safe_name)
         response.headers["X-Original-Size"] = str(stats["original_size"])
         response.headers["X-New-Size"] = str(stats["new_size"])
         response.headers["X-Saved-Percent"] = str(stats["saved_percent"])
-        response.headers["Access-Control-Expose-Headers"] = "X-Original-Size, X-New-Size, X-Saved-Percent"
         return response
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="PDF compression failed: " + str(e))
 
 @app.post("/api/core/watermark")
 async def api_watermark_pdf(
@@ -164,19 +196,21 @@ async def api_watermark_pdf(
     angle: int = Form(45),
     color: str = Form("#888888")
 ):
-    temp_input = os.path.join(TEMP_DIR, f"wm_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"watermarked_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         core_service.watermark_pdf(temp_input, text, output_file, opacity, font_size, angle, color)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"watermarked_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"watermarked_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Watermarking failed: " + str(e))
 
 @app.post("/api/core/protect")
 async def api_protect_pdf(
@@ -184,19 +218,21 @@ async def api_protect_pdf(
     file: UploadFile = File(...),
     password: str = Form(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"prot_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"protected_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         core_service.protect_pdf(temp_input, password, output_file)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"protected_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"protected_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="AES-256 encryption failed: " + str(e))
 
 @app.post("/api/core/unlock")
 async def api_unlock_pdf(
@@ -204,61 +240,69 @@ async def api_unlock_pdf(
     file: UploadFile = File(...),
     password: str = Form(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"unlock_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"unlocked_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         success = core_service.unlock_pdf(temp_input, password, output_file)
-        cleanup_file(temp_input)
         if not success:
+            cleanup_workspace(job_dir)
             raise HTTPException(status_code=400, detail="Incorrect password. Unable to unlock PDF.")
             
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"unlocked_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"unlocked_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except HTTPException:
+        cleanup_workspace(job_dir)
         raise
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Document decryption failed: " + str(e))
 
 # ----------------- VISUAL PAGE STUDIO -----------------
 
 @app.post("/api/visual/previews")
 async def api_visual_previews(file: UploadFile = File(...)):
-    temp_input = os.path.join(TEMP_DIR, f"vis_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         previews = visual_service.get_pdf_page_previews(temp_input, max_width=320)
-        cleanup_file(temp_input)
+        cleanup_workspace(job_dir)
         return {"totalPages": len(previews), "pages": previews}
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Preview generation failed: " + str(e))
 
 @app.post("/api/visual/apply")
 async def api_visual_apply(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    pages_config: str = Form(...)  # JSON string of List[Dict]
+    pages_config: str = Form(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"vis_apply_{file.filename}")
-    output_file = os.path.join(TEMP_DIR, f"reorganized_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_file = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         config = json.loads(pages_config)
         visual_service.apply_visual_transformations(temp_input, config, output_file)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename=f"reorganized_{file.filename}")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"reorganized_{sanitize_filename(file.filename)}"
+        return FileResponse(output_file, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Visual reorganizer failed: " + str(e))
 
 # ----------------- FORMAT CONVERTERS -----------------
 
@@ -269,24 +313,25 @@ async def api_pdf_to_images(
     img_format: str = Form("png"),
     dpi: int = Form(150)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"p2i_{file.filename}")
-    out_dir = os.path.join(TEMP_DIR, f"p2i_out_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    out_dir = os.path.join(job_dir, "images_out")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         result = converter_service.pdf_to_images(temp_input, out_dir, img_format, dpi)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, out_dir)
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}_images.zip"
         return FileResponse(
             result["zip_path"],
             media_type="application/zip",
-            filename=os.path.basename(result["zip_path"])
+            filename=safe_name
         )
     except Exception as e:
-        cleanup_file(temp_input)
-        cleanup_file(out_dir)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="PDF to images conversion failed: " + str(e))
 
 @app.post("/api/convert/images-to-pdf")
 async def api_images_to_pdf(
@@ -298,162 +343,170 @@ async def api_images_to_pdf(
 ):
     if not files:
         raise HTTPException(status_code=400, detail="Please upload at least one image.")
+    job_dir = create_job_workspace()
     saved_images = []
     try:
-        for f in files:
-            img_path = os.path.join(TEMP_DIR, f"img_{f.filename}")
+        for idx, f in enumerate(files):
+            ext = os.path.splitext(f.filename or "")[1] or ".png"
+            img_path = os.path.join(job_dir, f"img_{idx}{ext}")
+            content = await f.read()
             with open(img_path, "wb") as out:
-                out.write(await f.read())
+                out.write(content)
             saved_images.append(img_path)
             
-        output_file = os.path.join(TEMP_DIR, "images_combined.pdf")
+        output_file = os.path.join(job_dir, "output.pdf")
         converter_service.images_to_pdf(saved_images, output_file, page_size, orientation, margin)
-        for p in saved_images:
-            cleanup_file(p)
-            
-        background_tasks.add_task(cleanup_file, output_file)
-        return FileResponse(output_file, media_type="application/pdf", filename="images_combined.pdf")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        return FileResponse(output_file, media_type="application/pdf", filename="created_from_images.pdf")
     except Exception as e:
-        for p in saved_images:
-            cleanup_file(p)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Image to PDF failed: " + str(e))
 
 @app.post("/api/convert/docx-to-pdf")
 async def api_docx_to_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"in_{file.filename}")
-    base_name = os.path.splitext(file.filename)[0]
-    output_pdf = os.path.join(TEMP_DIR, f"{base_name}.pdf")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.docx")
+    output_pdf = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         converter_service.docx_to_pdf(temp_input, output_pdf)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_pdf)
-        return FileResponse(output_pdf, media_type="application/pdf", filename=f"{base_name}.pdf")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}.pdf"
+        return FileResponse(output_pdf, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=f"Word to PDF error: {str(e)}")
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Word to PDF conversion failed: " + str(e))
 
 @app.post("/api/convert/pptx-to-pdf")
 async def api_pptx_to_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"in_{file.filename}")
-    base_name = os.path.splitext(file.filename)[0]
-    output_pdf = os.path.join(TEMP_DIR, f"{base_name}.pdf")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pptx")
+    output_pdf = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         converter_service.pptx_to_pdf(temp_input, output_pdf)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_pdf)
-        return FileResponse(output_pdf, media_type="application/pdf", filename=f"{base_name}.pdf")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}.pdf"
+        return FileResponse(output_pdf, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=f"PowerPoint to PDF error: {str(e)}")
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="PowerPoint to PDF conversion failed: " + str(e))
 
 @app.post("/api/convert/excel-to-pdf")
 async def api_excel_to_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"in_{file.filename}")
-    base_name = os.path.splitext(file.filename)[0]
-    output_pdf = os.path.join(TEMP_DIR, f"{base_name}.pdf")
+    job_dir = create_job_workspace()
+    ext = os.path.splitext(file.filename or "")[1] or ".xlsx"
+    temp_input = os.path.join(job_dir, f"input{ext}")
+    output_pdf = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         converter_service.excel_to_pdf(temp_input, output_pdf)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_pdf)
-        return FileResponse(output_pdf, media_type="application/pdf", filename=f"{base_name}.pdf")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}.pdf"
+        return FileResponse(output_pdf, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=f"Excel to PDF error: {str(e)}")
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Excel to PDF conversion failed: " + str(e))
 
 @app.post("/api/convert/text-to-pdf")
 async def api_text_to_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"in_{file.filename}")
-    base_name = os.path.splitext(file.filename)[0]
-    output_pdf = os.path.join(TEMP_DIR, f"{base_name}.pdf")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.txt")
+    output_pdf = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         converter_service.text_to_pdf(temp_input, output_pdf)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_pdf)
-        return FileResponse(output_pdf, media_type="application/pdf", filename=f"{base_name}.pdf")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}.pdf"
+        return FileResponse(output_pdf, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=f"Text to PDF error: {str(e)}")
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Text to PDF conversion failed: " + str(e))
 
 @app.post("/api/convert/md-to-pdf")
 async def api_md_to_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"in_{file.filename}")
-    base_name = os.path.splitext(file.filename)[0]
-    output_pdf = os.path.join(TEMP_DIR, f"{base_name}.pdf")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.md")
+    output_pdf = os.path.join(job_dir, "output.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         converter_service.markdown_to_pdf(temp_input, output_pdf)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_pdf)
-        return FileResponse(output_pdf, media_type="application/pdf", filename=f"{base_name}.pdf")
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}.pdf"
+        return FileResponse(output_pdf, media_type="application/pdf", filename=safe_name)
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=f"Markdown to PDF error: {str(e)}")
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Markdown to PDF conversion failed: " + str(e))
 
 @app.post("/api/convert/pdf-to-docx")
 async def api_pdf_to_docx(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"docx_in_{file.filename}")
-    base_name = os.path.splitext(file.filename)[0]
-    output_docx = os.path.join(TEMP_DIR, f"{base_name}.docx")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
+    output_docx = os.path.join(job_dir, "output.docx")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         converter_service.pdf_to_docx(temp_input, output_docx)
-        cleanup_file(temp_input)
-        background_tasks.add_task(cleanup_file, output_docx)
+        background_tasks.add_task(cleanup_workspace, job_dir)
+        safe_name = f"{os.path.splitext(sanitize_filename(file.filename))[0]}.docx"
         return FileResponse(
             output_docx,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            filename=f"{base_name}.docx"
+            filename=safe_name
         )
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=f"Word conversion error: {str(e)}")
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Word conversion failed: " + str(e))
 
 @app.post("/api/convert/pdf-to-text")
 async def api_pdf_to_text(file: UploadFile = File(...)):
-    temp_input = os.path.join(TEMP_DIR, f"txt_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
         text_content = converter_service.pdf_to_text(temp_input)
-        cleanup_file(temp_input)
-        return {"filename": file.filename, "text": text_content}
+        cleanup_workspace(job_dir)
+        return {"filename": sanitize_filename(file.filename), "text": text_content}
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Text extraction failed: " + str(e))
 
 # ----------------- OCR STUDIO -----------------
 
@@ -462,17 +515,19 @@ async def api_ocr_extract(
     file: UploadFile = File(...),
     language: str = Form("eng")
 ):
-    temp_input = os.path.join(TEMP_DIR, f"ocr_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         result = ocr_service.run_ocr_on_pdf(temp_input, language)
-        cleanup_file(temp_input)
+        cleanup_workspace(job_dir)
         return result
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="OCR extraction failed: " + str(e))
 
 # ----------------- AI DOCUMENT ASSISTANT -----------------
 
@@ -481,17 +536,19 @@ async def api_ai_summarize(
     file: UploadFile = File(...),
     api_key: Optional[str] = Form(None)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"ai_sum_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         res = ai_service.summarize_document(temp_input, api_key)
-        cleanup_file(temp_input)
+        cleanup_workspace(job_dir)
         return res
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="AI summarization failed: " + str(e))
 
 @app.post("/api/ai/chat")
 async def api_ai_chat(
@@ -499,31 +556,35 @@ async def api_ai_chat(
     question: str = Form(...),
     api_key: Optional[str] = Form(None)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"ai_chat_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         res = ai_service.chat_with_document(temp_input, question, api_key=api_key)
-        cleanup_file(temp_input)
+        cleanup_workspace(job_dir)
         return res
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="AI document chat failed: " + str(e))
 
 @app.post("/api/ai/extract-tables")
 async def api_ai_extract_tables(
     file: UploadFile = File(...),
     api_key: Optional[str] = Form(None)
 ):
-    temp_input = os.path.join(TEMP_DIR, f"ai_tab_{file.filename}")
+    job_dir = create_job_workspace()
+    temp_input = os.path.join(job_dir, "input.pdf")
     try:
+        content = await file.read()
         with open(temp_input, "wb") as out:
-            out.write(await file.read())
+            out.write(content)
             
         res = ai_service.extract_tables_and_entities(temp_input, api_key=api_key)
-        cleanup_file(temp_input)
+        cleanup_workspace(job_dir)
         return res
     except Exception as e:
-        cleanup_file(temp_input)
-        raise HTTPException(status_code=500, detail=str(e))
+        cleanup_workspace(job_dir)
+        raise HTTPException(status_code=500, detail="Table extraction failed: " + str(e))

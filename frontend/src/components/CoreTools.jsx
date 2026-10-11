@@ -9,12 +9,13 @@ import {
   clientSplitPdf, 
   clientRotatePdf, 
   clientDeletePages, 
-  clientWatermarkPdf 
+  clientWatermarkPdf,
+  clientCompressPdf
 } from '../services/clientPdfService';
 
 export default function CoreTools() {
   const [selectedTool, setSelectedTool] = useState('merge');
-  const [engineMode, setEngineMode] = useState('client'); // 'client' (User CPU/RAM) or 'server'
+  const [engineMode, setEngineMode] = useState('client'); // 'client' (Local In-Browser) or 'server'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [resultUrl, setResultUrl] = useState(null);
@@ -36,14 +37,14 @@ export default function CoreTools() {
   const [password, setPassword] = useState('');
 
   const tools = [
-    { id: 'merge', title: 'Merge PDFs', desc: 'Combine multiple PDFs into a single document in your chosen order.', icon: Combine, color: 'text-red-600 bg-red-50 border-red-200' },
-    { id: 'split', title: 'Split PDF', desc: 'Extract specific page ranges (e.g. 1-4, 7) into a separate clean PDF.', icon: Scissors, color: 'text-orange-600 bg-orange-50 border-orange-200' },
-    { id: 'compress', title: 'Compress PDF', desc: 'Reduce file size with smart stream deflating and object deduplication.', icon: Minimize2, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
-    { id: 'rotate', title: 'Rotate PDF', desc: 'Rotate specific pages or entire documents 90°, 180°, or 270° clockwise.', icon: RotateCw, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-    { id: 'delete', title: 'Delete Pages', desc: 'Strip out unwanted pages from your document effortlessly.', icon: Trash2, color: 'text-rose-600 bg-rose-50 border-rose-200' },
-    { id: 'watermark', title: 'Add Watermark', desc: 'Stamp text watermarks across every page with custom angle & opacity.', icon: Stamp, color: 'text-purple-600 bg-purple-50 border-purple-200' },
-    { id: 'protect', title: 'Protect PDF', desc: 'Encrypt document with strong AES-256 password protection.', icon: Lock, color: 'text-amber-600 bg-amber-50 border-amber-200' },
-    { id: 'unlock', title: 'Unlock PDF', desc: 'Remove password restrictions and decrypt protected documents.', icon: Unlock, color: 'text-teal-600 bg-teal-50 border-teal-200' },
+    { id: 'merge', title: 'Merge PDFs', desc: 'Combine multiple PDFs into a single document in your chosen order.', icon: Combine, color: 'text-red-600 bg-red-50 border-red-200', mode: 'Local' },
+    { id: 'split', title: 'Split PDF', desc: 'Extract specific page ranges (e.g. 1-4, 7) into a separate clean PDF.', icon: Scissors, color: 'text-orange-600 bg-orange-50 border-orange-200', mode: 'Local' },
+    { id: 'compress', title: 'Compress PDF', desc: 'Stream-deflate and deduplicate PDF object streams in browser RAM.', icon: Minimize2, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', mode: 'Local' },
+    { id: 'rotate', title: 'Rotate PDF', desc: 'Rotate specific pages or entire documents 90°, 180°, or 270° clockwise.', icon: RotateCw, color: 'text-blue-600 bg-blue-50 border-blue-200', mode: 'Local' },
+    { id: 'delete', title: 'Delete Pages', desc: 'Strip out unwanted pages from your document effortlessly.', icon: Trash2, color: 'text-rose-600 bg-rose-50 border-rose-200', mode: 'Local' },
+    { id: 'watermark', title: 'Add Watermark', desc: 'Stamp text watermarks across every page with custom angle & opacity.', icon: Stamp, color: 'text-purple-600 bg-purple-50 border-purple-200', mode: 'Local' },
+    { id: 'protect', title: 'Protect PDF', desc: 'Encrypt document with strong AES-256 password protection.', icon: Lock, color: 'text-amber-600 bg-amber-50 border-amber-200', mode: 'Server Required' },
+    { id: 'unlock', title: 'Unlock PDF', desc: 'Remove password restrictions and decrypt protected documents.', icon: Unlock, color: 'text-teal-600 bg-teal-50 border-teal-200', mode: 'Server Required' },
   ];
 
   const handleFileChange = (e) => {
@@ -71,14 +72,21 @@ export default function CoreTools() {
 
     setLoading(true);
     setErrorMsg('');
-    setResultUrl(null);
-    setCompressStats(null);
+    // Invalidate any previous result URL
+    if (resultUrl) {
+      window.URL.revokeObjectURL(resultUrl);
+      setResultUrl(null);
+    }
 
     try {
-      // 1. Try Client-Side (User's CPU & RAM) if applicable
-      const isClientCapable = ['merge', 'split', 'rotate', 'delete', 'watermark'].includes(selectedTool);
+      // 1. Client-Side Execution (Local in browser memory)
+      const isClientCapable = ['merge', 'split', 'rotate', 'delete', 'watermark', 'compress'].includes(selectedTool);
 
-      if (engineMode === 'client' && isClientCapable) {
+      if (engineMode === 'client') {
+        if (!isClientCapable) {
+          throw new Error(`The '${selectedTool}' feature requires the dedicated Python security engine. Switch Engine Mode to 'Server Processing' or run the local Python backend to proceed.`);
+        }
+
         let clientBlob = null;
         let defaultName = 'output.pdf';
 
@@ -97,6 +105,15 @@ export default function CoreTools() {
         } else if (selectedTool === 'watermark') {
           clientBlob = await clientWatermarkPdf(files[0], watermarkText, watermarkOpacity, watermarkSize, watermarkAngle, watermarkColor);
           defaultName = `watermarked_${files[0].name}`;
+        } else if (selectedTool === 'compress') {
+          const compResult = await clientCompressPdf(files[0], compressQuality);
+          clientBlob = compResult.blob;
+          defaultName = `compressed_${files[0].name}`;
+          setCompressStats({
+            orig: (compResult.originalSize / (1024 * 1024)).toFixed(2) + ' MB',
+            nw: (compResult.compressedSize / (1024 * 1024)).toFixed(2) + ' MB',
+            saved: compResult.reductionRatio + '%',
+          });
         }
 
         if (clientBlob) {
@@ -108,7 +125,7 @@ export default function CoreTools() {
         }
       }
 
-      // 2. Server execution fallback (Compress, Protect, Unlock, or if user explicitly chose server)
+      // 2. Server Execution Mode (Explicit server request)
       const formData = new FormData();
       let endpoint = '';
       let defaultName = 'output.pdf';
@@ -162,6 +179,9 @@ export default function CoreTools() {
       });
 
       if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Backend server is offline or unreachable (404). Start the local Python backend service or switch to in-browser local tools.');
+        }
         let errDetail = 'Processing failed.';
         try {
           const errJson = await res.json();
@@ -267,8 +287,17 @@ export default function CoreTools() {
                   <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide ${
+                      tool.mode === 'Local' 
+                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400' 
+                        : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400'
+                    }`}>
+                      {tool.mode}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{tool.desc}</div>
                 </div>
               </button>
             );

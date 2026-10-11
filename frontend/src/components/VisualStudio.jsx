@@ -15,54 +15,38 @@ export default function VisualStudio() {
   const [resultUrl, setResultUrl] = useState(null);
   const [resultFileName, setResultFileName] = useState('');
 
+  const [initialPages, setInitialPages] = useState([]);
+
+  // Invalidate any active export link so users never download a stale document
+  const invalidateExport = () => {
+    if (resultUrl) {
+      window.URL.revokeObjectURL(resultUrl);
+      setResultUrl(null);
+    }
+  };
+
   const handleFileUpload = async (e) => {
     if (!e.target.files || !e.target.files[0]) return;
     const selected = e.target.files[0];
     setFile(selected);
     setLoadingPreviews(true);
     setErrorMsg('');
-    setResultUrl(null);
+    invalidateExport();
     setPages([]);
+    setInitialPages([]);
 
-    const formData = new FormData();
-    formData.append('file', selected);
-
-    // 1. Try server-rendered high-res thumbnail previews
-    try {
-      const res = await fetch('/api/visual/previews', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const initialized = data.pages.map((p, idx) => ({
-          id: `page-${idx}-${Date.now()}`,
-          originalIndex: p.originalIndex,
-          pageNumber: p.pageNumber,
-          thumbnail: p.thumbnail,
-          rotationDelta: 0,
-          included: true,
-        }));
-        setPages(initialized);
-        setLoadingPreviews(false);
-        return;
-      }
-    } catch (_) {
-      // Server not connected (e.g. running on Vercel client-only)
-    }
-
-    // 2. Client-Side in-browser thumbnail generation using canvas & pdfjs-dist
+    // 1. Client-Side in-browser thumbnail generation (100% private in browser memory)
     try {
       const thumbs = await clientGenerateThumbnails(selected);
       setPages(thumbs);
+      setInitialPages(JSON.parse(JSON.stringify(thumbs)));
       setLoadingPreviews(false);
       return;
     } catch (clientErr) {
-      console.warn('Canvas thumbnail fallback to basic count:', clientErr);
+      console.warn('Canvas thumbnail error, falling back to pdf-lib page count:', clientErr);
     }
 
-    // 3. Ultra-light fallback using pdf-lib page count
+    // 2. Client-side lightweight fallback using pdf-lib page count
     try {
       const arrayBuffer = await selected.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
@@ -77,6 +61,7 @@ export default function VisualStudio() {
         included: true,
       }));
       setPages(fallbackPages);
+      setInitialPages(JSON.parse(JSON.stringify(fallbackPages)));
     } catch (err) {
       setErrorMsg(err.message || 'Error parsing document.');
     } finally {
@@ -85,6 +70,7 @@ export default function VisualStudio() {
   };
 
   const handleRotate = (index, delta) => {
+    invalidateExport();
     setPages((prev) => {
       const updated = [...prev];
       updated[index] = {
@@ -96,6 +82,7 @@ export default function VisualStudio() {
   };
 
   const handleToggleInclude = (index) => {
+    invalidateExport();
     setPages((prev) => {
       const updated = [...prev];
       updated[index] = {
@@ -108,6 +95,7 @@ export default function VisualStudio() {
 
   const handleMove = (fromIndex, toIndex) => {
     if (toIndex < 0 || toIndex >= pages.length) return;
+    invalidateExport();
     setPages((prev) => {
       const updated = [...prev];
       const [movedItem] = updated.splice(fromIndex, 1);
@@ -117,6 +105,7 @@ export default function VisualStudio() {
   };
 
   const handleDuplicate = (index) => {
+    invalidateExport();
     setPages((prev) => {
       const itemToDup = prev[index];
       const duplicated = {
@@ -130,6 +119,7 @@ export default function VisualStudio() {
   };
 
   const handleRotateAll = (delta) => {
+    invalidateExport();
     setPages((prev) =>
       prev.map((p) => ({
         ...p,
@@ -139,13 +129,11 @@ export default function VisualStudio() {
   };
 
   const handleResetAll = () => {
-    setPages((prev) =>
-      prev.map((p) => ({
-        ...p,
-        rotationDelta: 0,
-        included: true,
-      }))
-    );
+    invalidateExport();
+    if (initialPages && initialPages.length > 0) {
+      // True restore of original document layout, ordering, count, and rotations
+      setPages(JSON.parse(JSON.stringify(initialPages)));
+    }
   };
 
   const handleExport = async () => {

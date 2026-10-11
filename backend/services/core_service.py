@@ -189,12 +189,13 @@ def watermark_pdf(file_path: str, text: str, output_path: str, opacity: float = 
     return output_path
 
 def protect_pdf(file_path: str, password: str, output_path: str) -> str:
-    """Encrypts PDF with AES-256 password protection."""
+    """Encrypts PDF with verified AES-256 password protection."""
     reader = PdfReader(file_path)
     writer = PdfWriter()
     for page in reader.pages:
         writer.add_page(page)
-    writer.encrypt(user_password=password, owner_password=password)
+    # Explicitly enforce standard AES-256 (V=5, R=6, 256-bit encryption key)
+    writer.encrypt(user_password=password, owner_password=password, algorithm="AES-256")
     with open(output_path, "wb") as f:
         writer.write(f)
     return output_path

@@ -205,11 +205,39 @@ def pptx_to_pdf(input_path: str, output_path: str) -> str:
 
 def excel_to_pdf(input_path: str, output_path: str) -> str:
     """
-    Converts Excel (.xlsx, .xls, .csv) to PDF using Excel COM automation.
+    Converts Excel (.xlsx, .xls, .csv) to PDF.
+    CSV uses pure-Python ReportLab Table generation with zero COM requirement.
+    XLS/XLSX uses Excel automation when available.
     """
     abs_input = os.path.abspath(input_path)
     abs_output = os.path.abspath(output_path)
     
+    # Pure Python CSV conversion with zero desktop COM dependency
+    if input_path.lower().endswith(".csv"):
+        try:
+            import csv
+            from reportlab.platypus import Table, TableStyle
+            with open(input_path, "r", encoding="utf-8", errors="replace") as f:
+                reader = csv.reader(f)
+                data = [row for row in reader if any(cell.strip() for cell in row)]
+            if not data:
+                data = [["Empty CSV file"]]
+            doc = SimpleDocTemplate(abs_output, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+            t = Table(data)
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#0f172a')),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+            ]))
+            doc.build([t])
+            return output_path
+        except Exception as csv_err:
+            print(f"CSV fallback error: {csv_err}")
+
     try:
         import pythoncom
         import win32com.client
@@ -227,7 +255,7 @@ def excel_to_pdf(input_path: str, output_path: str) -> str:
         finally:
             pythoncom.CoUninitialize()
     except Exception as com_err:
-        raise RuntimeError(f"Excel to PDF conversion error: {com_err}")
+        raise RuntimeError(f"Excel to PDF conversion error: {com_err}. For cloud/Linux deployment, spreadsheet rendering requires LibreOffice engine.")
 
 # ----------------- TEXT & MARKDOWN TO PDF -----------------
 

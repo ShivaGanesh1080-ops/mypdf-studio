@@ -24,6 +24,13 @@ export default function Navbar({
     setShowKeyModal(false);
   };
 
+  const handleClearKey = () => {
+    setApiKey('');
+    setTempKey('');
+    localStorage.removeItem('mypdf_gemini_key');
+    setShowKeyModal(false);
+  };
+
   const navItems = [
     { id: 'core', label: 'Core Tools', icon: Wrench },
     { id: 'visual', label: 'Visual Page Studio', icon: LayoutGrid },
@@ -203,19 +210,29 @@ export default function Navbar({
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2.5">
-              <button
-                onClick={() => setShowKeyModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveKey}
-                className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm cursor-pointer"
-              >
-                Save Key
-              </button>
+            <div className="flex items-center justify-between gap-2.5">
+              {apiKey ? (
+                <button
+                  onClick={handleClearKey}
+                  className="px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer transition-colors"
+                >
+                  Clear Stored Key
+                </button>
+              ) : <div />}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowKeyModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveKey}
+                  className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save Key
+                </button>
+              </div>
             </div>
           </div>
         </div>

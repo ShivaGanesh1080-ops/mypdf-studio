@@ -4,7 +4,7 @@ import {
   Upload, Download, Loader2, CheckCircle, AlertCircle, ArrowRight, Copy,
   Presentation, Sheet, FileType, Settings2, Trash2, ArrowLeft, FilePlus2, ArrowRightLeft
 } from 'lucide-react';
-import { clientImagesToPdf, clientTextToPdf } from '../services/clientPdfService';
+import { clientImagesToPdf, clientTextToPdf, clientExtractPdfText } from '../services/clientPdfService';
 
 export default function FormatConverter() {
   const [activeCategory, setActiveCategory] = useState('to_pdf'); // 'to_pdf' or 'from_pdf'
@@ -34,47 +34,62 @@ export default function FormatConverter() {
       icon: ImageIcon, 
       accept: 'image/jpeg,image/png,image/webp,image/bmp,image/tiff',
       multiple: true,
+      mode: 'Local',
       color: 'text-rose-600 bg-rose-50 border-rose-200' 
+    },
+    { 
+      id: 'txt2pdf', 
+      title: 'Text / Plain Text to PDF', 
+      desc: 'Transform plain text (.txt) with word-wrapping and multi-page pagination.', 
+      icon: FileType, 
+      accept: '.txt,.text',
+      multiple: false,
+      mode: 'Local',
+      color: 'text-purple-600 bg-purple-50 border-purple-200' 
     },
     { 
       id: 'docx2pdf', 
       title: 'Word (.docx) to PDF', 
-      desc: 'Convert Microsoft Word (.docx, .doc) documents into pixel-perfect PDFs.', 
+      desc: 'Convert Microsoft Word (.docx, .doc) documents into PDFs.', 
       icon: FileCode, 
       accept: '.docx,.doc',
       multiple: false,
+      mode: 'Server Required',
       color: 'text-blue-600 bg-blue-50 border-blue-200' 
     },
     { 
       id: 'pptx2pdf', 
       title: 'PowerPoint (.pptx) to PDF', 
-      desc: 'Convert slide presentations (.pptx, .ppt) into high-fidelity PDF slide decks.', 
+      desc: 'Convert slide presentations (.pptx, .ppt) into PDF slide decks.', 
       icon: Presentation, 
       accept: '.pptx,.ppt',
       multiple: false,
+      mode: 'Server Required',
       color: 'text-amber-600 bg-amber-50 border-amber-200' 
     },
     { 
       id: 'excel2pdf', 
       title: 'Excel (.xlsx) to PDF', 
-      desc: 'Convert spreadsheets (.xlsx, .xls, .csv) into clean formatted PDF sheets.', 
+      desc: 'Convert spreadsheets (.xlsx, .xls, .csv) into clean PDF sheets.', 
       icon: Sheet, 
       accept: '.xlsx,.xls,.csv',
       multiple: false,
+      mode: 'Server Required',
       color: 'text-emerald-600 bg-emerald-50 border-emerald-200' 
-    },
-    { 
-      id: 'txt2pdf', 
-      title: 'Text / Markdown to PDF', 
-      desc: 'Transform plain text (.txt) or formatted Markdown (.md) into a styled PDF document.', 
-      icon: FileType, 
-      accept: '.txt,.md',
-      multiple: false,
-      color: 'text-purple-600 bg-purple-50 border-purple-200' 
     },
   ];
 
   const fromPdfTools = [
+    { 
+      id: 'pdf2txt', 
+      title: 'PDF to Clean Text', 
+      desc: 'Extract clean digital text stream from pages directly inside browser memory.', 
+      icon: FileDown, 
+      accept: '.pdf',
+      multiple: false,
+      mode: 'Local',
+      color: 'text-emerald-600 bg-emerald-50 border-emerald-200' 
+    },
     { 
       id: 'pdf2docx', 
       title: 'PDF to Word (.docx)', 
@@ -82,6 +97,7 @@ export default function FormatConverter() {
       icon: FileCode, 
       accept: '.pdf',
       multiple: false,
+      mode: 'Server Required',
       color: 'text-blue-600 bg-blue-50 border-blue-200' 
     },
     { 
@@ -91,16 +107,8 @@ export default function FormatConverter() {
       icon: ImageIcon, 
       accept: '.pdf',
       multiple: false,
+      mode: 'Server Required',
       color: 'text-indigo-600 bg-indigo-50 border-indigo-200' 
-    },
-    { 
-      id: 'pdf2txt', 
-      title: 'PDF to Clean Text', 
-      desc: 'Extract clean plain text with page separators without formatting noise.', 
-      icon: FileDown, 
-      accept: '.pdf',
-      multiple: false,
-      color: 'text-emerald-600 bg-emerald-50 border-emerald-200' 
     },
   ];
 
@@ -109,7 +117,7 @@ export default function FormatConverter() {
 
   const handleCategorySwitch = (cat) => {
     setActiveCategory(cat);
-    const newTool = cat === 'to_pdf' ? 'img2pdf' : 'pdf2docx';
+    const newTool = cat === 'to_pdf' ? 'img2pdf' : 'pdf2txt';
     setActiveMode(newTool);
     setFiles([]);
     setResultUrl(null);
@@ -119,7 +127,10 @@ export default function FormatConverter() {
 
   const handleFileChange = (e) => {
     setErrorMsg('');
-    setResultUrl(null);
+    if (resultUrl) {
+      window.URL.revokeObjectURL(resultUrl);
+      setResultUrl(null);
+    }
     setExtractedText('');
     if (e.target.files) {
       setFiles(Array.from(e.target.files));
@@ -138,7 +149,10 @@ export default function FormatConverter() {
 
     setLoading(true);
     setErrorMsg('');
-    setResultUrl(null);
+    if (resultUrl) {
+      window.URL.revokeObjectURL(resultUrl);
+      setResultUrl(null);
+    }
     setExtractedText('');
 
     const formData = new FormData();
@@ -155,17 +169,11 @@ export default function FormatConverter() {
           setLoading(false);
           return;
         } catch (clientErr) {
-          console.warn('Client-side image conversion fallback to server:', clientErr);
-          // Fall through to server endpoint
-          endpoint = '/api/convert/images-to-pdf';
-          files.forEach((f) => formData.append('files', f));
-          formData.append('page_size', pageSize);
-          formData.append('orientation', orientation);
-          formData.append('margin', margin);
-          defaultName = 'created_from_images.pdf';
+          console.warn('Client-side image conversion error:', clientErr);
+          throw new Error('In-browser image conversion failed: ' + (clientErr.message || 'Invalid image'));
         }
       } 
-      else if (activeMode === 'txt2pdf' && !files[0].name.endsWith('.md')) {
+      else if (activeMode === 'txt2pdf') {
         try {
           const clientBlob = await clientTextToPdf(files[0]);
           setResultUrl(window.URL.createObjectURL(clientBlob));
@@ -173,10 +181,18 @@ export default function FormatConverter() {
           setLoading(false);
           return;
         } catch (clientErr) {
-          console.warn('Client-side text conversion fallback to server:', clientErr);
-          endpoint = '/api/convert/text-to-pdf';
-          formData.append('file', files[0]);
-          defaultName = `${files[0].name.replace(/\.[^/.]+$/, '')}.pdf`;
+          console.warn('Client-side text conversion error:', clientErr);
+          throw new Error('Text to PDF conversion error: ' + (clientErr.message || 'Failed'));
+        }
+      }
+      else if (activeMode === 'pdf2txt') {
+        try {
+          const textResult = await clientExtractPdfText(files[0]);
+          setExtractedText(textResult.fullText || 'No extractable digital text stream found in document.');
+          setLoading(false);
+          return;
+        } catch (extractErr) {
+          throw new Error('Digital text extraction error: ' + (extractErr.message || 'Failed to read PDF'));
         }
       }
       else if (activeMode === 'docx2pdf') {
@@ -194,11 +210,6 @@ export default function FormatConverter() {
         formData.append('file', files[0]);
         defaultName = `${files[0].name.replace(/\.[^/.]+$/, '')}.pdf`;
       }
-      else if (activeMode === 'txt2pdf') {
-        endpoint = '/api/convert/md-to-pdf';
-        formData.append('file', files[0]);
-        defaultName = `${files[0].name.replace(/\.[^/.]+$/, '')}.pdf`;
-      }
       else if (activeMode === 'pdf2docx') {
         endpoint = '/api/convert/pdf-to-docx';
         formData.append('file', files[0]);
@@ -211,14 +222,13 @@ export default function FormatConverter() {
         formData.append('dpi', dpi);
         defaultName = `${files[0].name.replace('.pdf', '')}_images.zip`;
       }
-      else if (activeMode === 'pdf2txt') {
-        endpoint = '/api/convert/pdf-to-text';
-        formData.append('file', files[0]);
-      }
 
       const res = await fetch(endpoint, { method: 'POST', body: formData });
       
       if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Backend server is offline or unreachable (404). Run the local Python backend server to enable server-assisted Office conversions.');
+        }
         let errDetail = 'Conversion failed.';
         try {
           const errJson = await res.json();
@@ -313,8 +323,17 @@ export default function FormatConverter() {
                 <Icon className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</span>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide ${
+                    tool.mode === 'Local' 
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400' 
+                      : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400'
+                  }`}>
+                    {tool.mode}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{tool.desc}</div>
               </div>
             </button>
           );

@@ -264,6 +264,14 @@ ${docText.substring(0, 40000)}`;
         </p>
       </div>
 
+      {/* External AI Service Disclosure */}
+      <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 flex items-start gap-2.5 text-[11px] text-slate-500 dark:text-slate-400 max-w-3xl mx-auto shadow-2xs">
+        <AlertCircle className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+        <span>
+          <strong>External AI Disclosure:</strong> Documents analyzed in this section send extracted document text to the Google Gemini API for semantic processing. For 100% offline/local privacy with zero external network requests, use the <strong>Core Tools</strong> and <strong>Visual Studio</strong> tabs.
+        </span>
+      </div>
+
       {/* API Key Banner if not set */}
       {!apiKey && (
         <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
