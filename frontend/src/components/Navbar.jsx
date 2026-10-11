@@ -43,9 +43,11 @@ export default function Navbar({
               className="flex items-center gap-3 cursor-pointer group select-none" 
               onClick={() => setActiveTab('core')}
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 via-red-500 to-amber-500 flex items-center justify-center text-white shadow-md shadow-red-200 dark:shadow-red-950/40 group-hover:scale-105 group-active:scale-95 transition-all duration-200">
-                <FileText className="w-5 h-5 stroke-[2.4]" />
-              </div>
+              <img 
+                src="/favicon.svg" 
+                alt="MyPDF Studio" 
+                className="w-10 h-10 rounded-full shadow-md shadow-red-500/20 group-hover:scale-105 group-active:scale-95 transition-all duration-200 shrink-0" 
+              />
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-black text-xl tracking-tight text-slate-900 dark:text-white group-hover:text-red-600 transition-colors">
