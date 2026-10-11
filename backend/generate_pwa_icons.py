@@ -1,0 +1,44 @@
+import pymupdf
+
+svg_content = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#b91c1c" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <!-- Background Rounded App Icon -->
+  <rect width="512" height="512" rx="112" fill="url(#grad)" />
+  
+  <!-- Document Shape -->
+  <g filter="url(#shadow)">
+    <path d="M160 110 H310 L380 180 V402 H160 Z" fill="#ffffff" />
+    <path d="M310 110 V180 H380 Z" fill="#e2e8f0" />
+  </g>
+  
+  <!-- PDF Text Emblem -->
+  <rect x="130" y="255" width="170" height="72" rx="14" fill="#dc2626" />
+  <text x="215" y="306" font-family="Arial, sans-serif" font-weight="900" font-size="42" fill="#ffffff" text-anchor="middle" letter-spacing="2">PDF</text>
+  
+  <!-- Line Accents -->
+  <rect x="160" y="350" width="190" height="12" rx="6" fill="#cbd5e1" />
+</svg>"""
+
+with open('../frontend/public/favicon.svg', 'w', encoding='utf-8') as f:
+    f.write(svg_content)
+
+# Render icon-512.png
+doc = pymupdf.open(stream=svg_content.encode('utf-8'), filetype='svg')
+page = doc[0]
+pix512 = page.get_pixmap(alpha=True)
+pix512.save('../frontend/public/icon-512.png')
+
+# Render icon-192.png
+scale192 = 192.0 / page.rect.width
+pix192 = page.get_pixmap(matrix=pymupdf.Matrix(scale192, scale192), alpha=True)
+pix192.save('../frontend/public/icon-192.png')
+
+print('Generated favicon.svg, icon-192.png, and icon-512.png successfully!')

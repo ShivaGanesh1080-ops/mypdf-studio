@@ -202,24 +202,24 @@ export default function CoreTools() {
       {/* Tool Selector Cards */}
       <div>
         <div className="text-center max-w-2xl mx-auto mb-4">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             Core PDF Power Tools
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Unlimited, private PDF operations running 100% locally on your computer.
           </p>
         </div>
 
         {/* Client vs Server Processing Toggle */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mb-6">
-          <div className="bg-slate-100/90 p-1 rounded-xl flex items-center border border-slate-200 text-xs shadow-2xs">
+          <div className="bg-slate-100/90 dark:bg-slate-900/90 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
             <button
               type="button"
               onClick={() => setEngineMode('client')}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 engineMode === 'client'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <span>⚡ Client Device Mode</span>
@@ -231,14 +231,14 @@ export default function CoreTools() {
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 engineMode === 'server'
                   ? 'bg-red-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <span>🚀 Server Mode</span>
               <span className="hidden md:inline text-[10px] font-normal opacity-90">(Python Engine)</span>
             </button>
           </div>
-          <span className="text-[11px] text-slate-400 font-medium">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
             {engineMode === 'client' ? '• 0 server load & instant execution' : '• Deep PyMuPDF engine processing'}
           </span>
         </div>
@@ -259,16 +259,16 @@ export default function CoreTools() {
                 }}
                 className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer min-h-[140px] interactive-card ${
                   isSelected
-                    ? 'border-red-500 bg-red-50/40 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
-                    : 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-md'
+                    ? 'border-red-500 bg-red-50/40 dark:bg-red-950/30 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
+                    : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
                 }`}
               >
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center border mb-3 transition-transform duration-200 group-hover:scale-110 shadow-xs ${tool.color}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-slate-900 group-hover:text-red-600 transition-colors">{tool.title}</div>
-                  <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
+                  <div className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
                 </div>
               </button>
             );
@@ -277,23 +277,23 @@ export default function CoreTools() {
       </div>
 
       {/* Active Tool Workspace */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs">
-        <div className="flex items-center gap-3 pb-5 border-b border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-xs transition-colors duration-200">
+        <div className="flex items-center gap-3 pb-5 border-b border-slate-100 dark:border-slate-800">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${activeToolObj?.color}`}>
             {activeToolObj && <activeToolObj.icon className="w-5 h-5" />}
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{activeToolObj?.title}</h2>
-            <p className="text-xs text-slate-500">{activeToolObj?.desc}</p>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{activeToolObj?.title}</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{activeToolObj?.desc}</p>
           </div>
         </div>
 
         {/* Upload Zone */}
         <div className="mt-6">
-          <label className="block text-xs font-bold text-slate-700 mb-2">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
             {selectedTool === 'merge' ? 'Select 2 or more PDF documents' : 'Select PDF document'}
           </label>
-          <div className="relative border-2 border-dashed border-slate-300 hover:border-red-400 bg-slate-50/60 hover:bg-red-50/20 rounded-xl p-8 text-center transition-all cursor-pointer">
+          <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-red-400 dark:hover:border-red-500 bg-slate-50/60 dark:bg-slate-950/40 hover:bg-red-50/20 dark:hover:bg-red-950/20 rounded-xl p-8 text-center transition-all cursor-pointer">
             <input
               type="file"
               accept=".pdf"
@@ -302,43 +302,43 @@ export default function CoreTools() {
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             <div className="flex flex-col items-center pointer-events-none">
-              <Upload className="w-8 h-8 text-slate-400 mb-2" />
-              <p className="text-xs sm:text-sm font-semibold text-slate-700">
+              <Upload className="w-8 h-8 text-slate-400 dark:text-slate-500 mb-2" />
+              <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {files.length > 0
                   ? `${files.length} file(s) selected: ${files.map((f) => f.name).join(', ')}`
                   : 'Click or drag & drop PDF files here'}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">No file size limits • Processed locally</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">No file size limits • Processed locally</p>
             </div>
           </div>
         </div>
 
         {/* Tool Options */}
-        <div className="mt-6 bg-slate-50 rounded-xl p-4 border border-slate-200/80">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Tool Parameters</h3>
+        <div className="mt-6 bg-slate-50 dark:bg-slate-950/60 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800 transition-colors">
+          <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">Tool Parameters</h3>
 
           {selectedTool === 'split' && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Pages to Extract (1-indexed)</label>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Pages to Extract (1-indexed)</label>
               <input
                 type="text"
                 value={splitRange}
                 onChange={(e) => setSplitRange(e.target.value)}
                 placeholder="e.g. 1-3, 5, 8-10 or all"
-                className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
               />
-              <p className="text-[11px] text-slate-500 mt-1">Enter comma-separated single pages or ranges.</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Enter comma-separated single pages or ranges.</p>
             </div>
           )}
 
           {selectedTool === 'rotate' && (
             <div className="flex flex-wrap items-center gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Rotation Angle</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Rotation Angle</label>
                 <select
                   value={rotateAngle}
                   onChange={(e) => setRotateAngle(Number(e.target.value))}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 >
                   <option value={90}>90° Clockwise</option>
                   <option value={180}>180° Upside Down</option>
@@ -346,13 +346,13 @@ export default function CoreTools() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Pages to Rotate</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Pages to Rotate</label>
                 <input
                   type="text"
                   value={rotateRange}
                   onChange={(e) => setRotateRange(e.target.value)}
                   placeholder="all or 1-2, 5"
-                  className="w-48 px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-48 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 />
               </div>
             </div>
@@ -360,13 +360,13 @@ export default function CoreTools() {
 
           {selectedTool === 'delete' && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Pages to Remove</label>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Pages to Remove</label>
               <input
                 type="text"
                 value={deleteRange}
                 onChange={(e) => setDeleteRange(e.target.value)}
                 placeholder="e.g. 2, 4-6"
-                className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
               />
               <p className="text-[11px] text-slate-500 mt-1">These pages will be stripped from the final output.</p>
             </div>

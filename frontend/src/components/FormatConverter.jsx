@@ -252,23 +252,23 @@ export default function FormatConverter() {
     <div className="space-y-6">
       {/* Title */}
       <div className="text-center max-w-2xl mx-auto mb-6">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
           Create & Convert Studio
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
           Turn JPG, Word, PowerPoint, Excel, and Text into PDFs — or convert PDFs to editable Office & Image formats.
         </p>
       </div>
 
       {/* Main Switcher: Create PDF vs Convert From PDF */}
       <div className="flex justify-center">
-        <div className="bg-slate-200/70 p-1.5 rounded-2xl flex flex-col sm:flex-row items-center gap-1.5 border border-slate-300/60 shadow-xs w-full sm:w-auto">
+        <div className="bg-slate-200/70 dark:bg-slate-900/90 p-1.5 rounded-2xl flex flex-col sm:flex-row items-center gap-1.5 border border-slate-300/60 dark:border-slate-800 shadow-xs w-full sm:w-auto">
           <button
             onClick={() => handleCategorySwitch('to_pdf')}
             className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'to_pdf'
                 ? 'bg-red-600 text-white shadow-sm scale-[1.01]'
-                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/40'
+                : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-slate-800'
             }`}
           >
             <FilePlus2 className="w-4 h-4" />
@@ -279,7 +279,7 @@ export default function FormatConverter() {
             className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'from_pdf'
                 ? 'bg-red-600 text-white shadow-sm scale-[1.01]'
-                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/40'
+                : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300/40 dark:hover:bg-slate-800'
             }`}
           >
             <ArrowRightLeft className="w-4 h-4" />
@@ -305,16 +305,16 @@ export default function FormatConverter() {
               }}
               className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer interactive-card ${
                 isSelected
-                  ? 'border-red-500 bg-red-50/40 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
-                  : 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-md'
+                  ? 'border-red-500 bg-red-50/40 dark:bg-red-950/30 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
+                  : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
               }`}
             >
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center border mb-3 transition-transform duration-200 group-hover:scale-110 shadow-xs ${tool.color}`}>
                 <Icon className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-bold text-sm text-slate-900 group-hover:text-red-600 transition-colors">{tool.title}</div>
-                <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
+                <div className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
               </div>
             </button>
           );
@@ -322,14 +322,14 @@ export default function FormatConverter() {
       </div>
 
       {/* Workstation */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs">
-        <div className="flex items-center gap-3 pb-5 border-b border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-xs transition-colors duration-200">
+        <div className="flex items-center gap-3 pb-5 border-b border-slate-100 dark:border-slate-800">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${currentMode?.color}`}>
             {currentMode && <currentMode.icon className="w-5 h-5" />}
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{currentMode?.title}</h2>
-            <p className="text-xs text-slate-500">{currentMode?.desc}</p>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{currentMode?.title}</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{currentMode?.desc}</p>
           </div>
         </div>
 
