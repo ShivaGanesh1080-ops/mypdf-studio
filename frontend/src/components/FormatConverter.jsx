@@ -262,23 +262,23 @@ export default function FormatConverter() {
 
       {/* Main Switcher: Create PDF vs Convert From PDF */}
       <div className="flex justify-center">
-        <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 border border-slate-300/60 shadow-xs">
+        <div className="bg-slate-200/80 p-1 rounded-2xl flex flex-col sm:flex-row items-center gap-1 border border-slate-300/60 shadow-xs w-full sm:w-auto">
           <button
             onClick={() => handleCategorySwitch('to_pdf')}
-            className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'to_pdf'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-700 hover:text-slate-900'
+                ? 'bg-red-600 text-white shadow-sm scale-[1.01]'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/40'
             }`}
           >
             ➕ Create PDF (From Images, Word, PPT, Excel, Text)
           </button>
           <button
             onClick={() => handleCategorySwitch('from_pdf')}
-            className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeCategory === 'from_pdf'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-700 hover:text-slate-900'
+                ? 'bg-red-600 text-white shadow-sm scale-[1.01]'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300/40'
             }`}
           >
             🔄 Convert From PDF (To Word, Images, Text)
@@ -287,7 +287,7 @@ export default function FormatConverter() {
       </div>
 
       {/* Tool Cards */}
-      <div className={`grid grid-cols-2 sm:grid-cols-3 ${activeCategory === 'to_pdf' ? 'md:grid-cols-5' : 'md:grid-cols-3'} gap-3`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${activeCategory === 'to_pdf' ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-3'} gap-3.5`}>
         {currentToolList.map((tool) => {
           const Icon = tool.icon;
           const isSelected = activeMode === tool.id;
@@ -301,18 +301,18 @@ export default function FormatConverter() {
                 setExtractedText('');
                 setErrorMsg('');
               }}
-              className={`p-3.5 rounded-xl border text-left transition-all duration-150 flex flex-col justify-between cursor-pointer ${
+              className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer interactive-card ${
                 isSelected
-                  ? 'border-red-500 bg-red-50/40 shadow-sm ring-1 ring-red-500'
-                  : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
+                  ? 'border-red-500 bg-red-50/40 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
+                  : 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-md'
               }`}
             >
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center border mb-2.5 ${tool.color}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border mb-3 transition-transform duration-200 group-hover:scale-110 shadow-xs ${tool.color}`}>
                 <Icon className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-bold text-xs sm:text-sm text-slate-900">{tool.title}</div>
-                <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">{tool.desc}</div>
+                <div className="font-bold text-sm text-slate-900 group-hover:text-red-600 transition-colors">{tool.title}</div>
+                <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
               </div>
             </button>
           );

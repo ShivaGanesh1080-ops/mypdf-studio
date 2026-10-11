@@ -33,31 +33,27 @@ export default function App() {
         setActiveTab={setActiveTab}
         apiKey={apiKey}
         setApiKey={setApiKey}
+        backendHealthy={backendHealthy}
         onOpenComparison={() => setIsComparisonOpen(true)}
       />
 
-      {/* Backend Health Notice if disconnected */}
-      {backendHealthy === false && (
-        <div className="bg-amber-500 text-white text-xs py-2 px-4 text-center font-semibold">
-          ⚠️ Local FastAPI backend is not detected on port 8000. Start it with: <code className="bg-amber-600 px-2 py-0.5 rounded">run_app.bat</code>
+      {/* Main Content Area with Smooth Tab Transitions */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div key={activeTab} className="animate-fade-in-up">
+          {activeTab === 'core' && <CoreTools />}
+          {activeTab === 'visual' && <VisualStudio />}
+          {activeTab === 'converter' && <FormatConverter />}
+          {activeTab === 'ocr' && <OcrStudio />}
+          {activeTab === 'ai' && (
+            <AiAssistant
+              apiKey={apiKey}
+              onOpenKeyModal={() => {
+                const navKeyBtn = document.querySelector('[data-key-btn]');
+                if (navKeyBtn) navKeyBtn.click();
+              }}
+            />
+          )}
         </div>
-      )}
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'core' && <CoreTools />}
-        {activeTab === 'visual' && <VisualStudio />}
-        {activeTab === 'converter' && <FormatConverter />}
-        {activeTab === 'ocr' && <OcrStudio />}
-        {activeTab === 'ai' && (
-          <AiAssistant
-            apiKey={apiKey}
-            onOpenKeyModal={() => {
-              const navKeyBtn = document.querySelector('[data-key-btn]');
-              if (navKeyBtn) navKeyBtn.click();
-            }}
-          />
-        )}
       </main>
 
       {/* Footer Banner */}

@@ -2,23 +2,116 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 min-h-screen antialiased;
+    @apply bg-slate-50 text-slate-900 min-h-screen antialiased selection:bg-red-500 selection:text-white;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
 }
 
-/* Custom scrollbars */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Hide scrollbar for mobile pill navigations */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Keyframes */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.35);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Reusable Animation Utilities */
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-float {
+  animation: floatSlow 3.5s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+/* Modern Card Hover Dynamics */
+.interactive-card {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.interactive-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.08);
+}
+.interactive-card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+/* Glassmorphism styling */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }

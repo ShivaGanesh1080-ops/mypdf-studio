@@ -240,7 +240,7 @@ export default function CoreTools() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
           {tools.map((tool) => {
             const Icon = tool.icon;
             const isSelected = selectedTool === tool.id;
@@ -254,18 +254,18 @@ export default function CoreTools() {
                   setErrorMsg('');
                   setCompressStats(null);
                 }}
-                className={`p-3.5 rounded-xl border text-left transition-all duration-150 flex flex-col justify-between ${
+                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer interactive-card ${
                   isSelected
-                    ? 'border-red-500 bg-red-50/40 shadow-sm ring-1 ring-red-500'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs'
+                    ? 'border-red-500 bg-red-50/40 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
+                    : 'border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-md'
                 }`}
               >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center border mb-2.5 ${tool.color}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center border mb-3 transition-transform duration-200 group-hover:scale-110 shadow-xs ${tool.color}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="font-bold text-xs sm:text-sm text-slate-900">{tool.title}</div>
-                  <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">{tool.desc}</div>
+                  <div className="font-bold text-sm text-slate-900 group-hover:text-red-600 transition-colors">{tool.title}</div>
+                  <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{tool.desc}</div>
                 </div>
               </button>
             );
