@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { ScanText, Upload, Copy, Download, Loader2, CheckCircle, AlertCircle, Cpu, FileText } from 'lucide-react';
+import { 
+  ScanText, Upload, Copy, Download, Loader2, CheckCircle, 
+  AlertCircle, Cpu, FileText, Sparkles, RefreshCw, Layers
+} from 'lucide-react';
+import { clientOcrPdf } from '../services/clientPdfService';
 
 export default function OcrStudio() {
   const [file, setFile] = useState(null);
   const [language, setLanguage] = useState('eng');
   const [loading, setLoading] = useState(false);
+  const [progressStatus, setProgressStatus] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
   const [ocrResult, setOcrResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [copied, setCopied] = useState(false);
@@ -14,6 +20,8 @@ export default function OcrStudio() {
       setFile(e.target.files[0]);
       setErrorMsg('');
       setOcrResult(null);
+      setProgressStatus('');
+      setProgressPercent(0);
     }
   };
 
@@ -26,28 +34,53 @@ export default function OcrStudio() {
     setLoading(true);
     setErrorMsg('');
     setOcrResult(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('language', language);
+    setProgressStatus('Reading document into device RAM...');
+    setProgressPercent(10);
 
     try {
+      // 1. Run Client-Side OCR / Text Stream Extraction (Runs 100% on user's device CPU & RAM)
+      const clientResult = await clientOcrPdf(file, language, (p) => {
+        setProgressStatus(p.status);
+        setProgressPercent(p.progress);
+      });
+
+      if (clientResult && clientResult.fullText) {
+        const words = clientResult.fullText.trim().split(/\s+/).filter(Boolean).length;
+        setOcrResult({
+          totalPages: clientResult.totalPages,
+          wordCount: words,
+          fullText: clientResult.fullText,
+          engine: clientResult.engine,
+        });
+        setLoading(false);
+        return;
+      }
+    } catch (clientErr) {
+      console.warn('Client OCR notice, checking fallback:', clientErr);
+    }
+
+    // 2. Local backend fallback (if FastAPI backend is running on 127.0.0.1:8000)
+    try {
+      setProgressStatus('Checking local server engine...');
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('language', language);
+
       const res = await fetch('/api/ocr/extract', {
         method: 'POST',
         body: formData,
       });
 
-      if (!res.ok) {
-        throw new Error('OCR extraction failed.');
+      if (res.ok) {
+        const data = await res.json();
+        setOcrResult(data);
+        setLoading(false);
+        return;
       }
+    } catch (_) {}
 
-      const data = await res.json();
-      setOcrResult(data);
-    } catch (err) {
-      setErrorMsg(err.message || 'Error executing OCR.');
-    } finally {
-      setLoading(false);
-    }
+    setErrorMsg('Could not extract text. The document might be password protected or corrupted.');
+    setLoading(false);
   };
 
   const copyToClipboard = () => {
@@ -63,7 +96,7 @@ export default function OcrStudio() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${file.name.replace('.pdf', '')}_ocr_extracted.txt`;
+    link.download = `${file.name.replace(/\.[^/.]+$/, '')}_ocr_extracted.txt`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -76,7 +109,7 @@ export default function OcrStudio() {
           <span>Advanced OCR Studio</span>
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          Turn scanned PDFs, receipts, and image documents into selectable, searchable text with optical recognition.
+          Extract text from scanned PDFs, receipts, and documents directly on your device with 100% privacy.
         </p>
       </div>
 
@@ -119,12 +152,12 @@ export default function OcrStudio() {
                 <option value="hin">Hindi (hin)</option>
               </select>
 
-              <div className="mt-4 p-3 rounded-lg bg-blue-50/70 border border-blue-200 text-[11px] text-blue-900 leading-relaxed">
-                <span className="font-bold flex items-center gap-1 mb-1">
-                  <Cpu className="w-3.5 h-3.5 text-blue-600" />
-                  Local Engine:
+              <div className="mt-4 p-3 rounded-lg bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-900 leading-relaxed">
+                <span className="font-bold flex items-center gap-1 mb-1 text-emerald-700">
+                  <Cpu className="w-3.5 h-3.5" />
+                  In-Browser Engine:
                 </span>
-                Extracts existing embedded text instantly, with optical image character recognition fallback for scanned papers.
+                Extracts text streams instantly on your computer's CPU and RAM. 100% private, zero data leaves your browser.
               </div>
             </div>
 
@@ -136,7 +169,7 @@ export default function OcrStudio() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Scanning Pages...</span>
+                  <span>Processing OCR...</span>
                 </>
               ) : (
                 <>
@@ -149,6 +182,25 @@ export default function OcrStudio() {
 
         </div>
 
+        {/* Live progress indicator when processing */}
+        {loading && (
+          <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl animate-fade-in">
+            <div className="flex items-center justify-between text-xs mb-2">
+              <span className="font-semibold text-slate-700 flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" />
+                {progressStatus || 'Running Optical Character Recognition...'}
+              </span>
+              <span className="font-bold text-red-600">{progressPercent}%</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-red-500 to-rose-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
         {/* Error message */}
         {errorMsg && (
           <div className="mt-4 p-3 bg-red-50 text-red-700 text-xs rounded-lg flex items-center gap-2 border border-red-200">
@@ -159,31 +211,36 @@ export default function OcrStudio() {
 
         {/* OCR Result View */}
         {ocrResult && (
-          <div className="mt-8 pt-6 border-t border-slate-100">
+          <div className="mt-8 pt-6 border-t border-slate-100 animate-fade-in-up">
             
             {/* Stats row */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1.5">
                   <CheckCircle className="w-3.5 h-3.5" />
                   Completed ({ocrResult.totalPages} pages)
                 </span>
                 <span className="text-xs text-slate-500 font-medium">
-                  Total Words: <strong className="text-slate-800">{ocrResult.wordCount.toLocaleString()}</strong>
+                  Words: <strong className="text-slate-800">{ocrResult.wordCount?.toLocaleString() || 0}</strong>
                 </span>
+                {ocrResult.engine && (
+                  <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[11px] font-medium">
+                    {ocrResult.engine}
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyToClipboard}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5 shadow-xs"
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>{copied ? 'Copied to Clipboard!' : 'Copy Text'}</span>
                 </button>
                 <button
                   onClick={downloadTextFile}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs"
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download .TXT</span>

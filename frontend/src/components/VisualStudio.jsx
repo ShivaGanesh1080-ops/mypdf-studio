@@ -4,7 +4,7 @@ import {
   Copy, Download, Loader2, CheckCircle, RefreshCw, EyeOff, LayoutGrid, CheckSquare, FileText
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
-import { clientApplyVisualEdits } from '../services/clientPdfService';
+import { clientApplyVisualEdits, clientGenerateThumbnails } from '../services/clientPdfService';
 
 export default function VisualStudio() {
   const [file, setFile] = useState(null);
@@ -52,7 +52,17 @@ export default function VisualStudio() {
       // Server not connected (e.g. running on Vercel client-only)
     }
 
-    // 2. Client-Side in-browser fallback using pdf-lib
+    // 2. Client-Side in-browser thumbnail generation using canvas & pdfjs-dist
+    try {
+      const thumbs = await clientGenerateThumbnails(selected);
+      setPages(thumbs);
+      setLoadingPreviews(false);
+      return;
+    } catch (clientErr) {
+      console.warn('Canvas thumbnail fallback to basic count:', clientErr);
+    }
+
+    // 3. Ultra-light fallback using pdf-lib page count
     try {
       const arrayBuffer = await selected.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });

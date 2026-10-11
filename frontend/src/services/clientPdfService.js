@@ -1,5 +1,11 @@
 import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure pdfjs worker to use unpkg CDN matching installed version
+if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+}
 
 /**
  * Parses user input ranges like '1-3, 5, 8-10' (1-indexed) into 0-indexed integers.
@@ -293,3 +299,140 @@ export async function clientApplyVisualEdits(file, pagesConfig) {
   const pdfBytes = await newDoc.save();
   return new Blob([pdfBytes], { type: 'application/pdf' });
 }
+
+/**
+ * Extract digital text from all pages of a PDF directly in browser memory.
+ */
+export async function clientExtractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+  const pages = [];
+  let fullText = '';
+
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item) => item.str).join(' ');
+    pages.push({
+      pageNumber: i,
+      text: pageText.trim(),
+    });
+    if (pageText.trim()) {
+      fullText += `--- Page ${i} ---\n` + pageText.trim() + '\n\n';
+    }
+  }
+
+  return {
+    totalPages: numPages,
+    pages,
+    fullText: fullText.trim(),
+  };
+}
+
+/**
+ * Optical Character Recognition (OCR) for scanned PDFs using client CPU / WebAssembly.
+ */
+export async function clientOcrPdf(file, language = 'eng', onProgress = null) {
+  // 1. Check if the PDF already contains embedded digital text
+  if (onProgress) onProgress({ status: 'Inspecting document stream...', progress: 15 });
+  const digitalResult = await clientExtractPdfText(file);
+
+  // If digital text is found, return immediately!
+  if (digitalResult.fullText && digitalResult.fullText.length > 30) {
+    if (onProgress) onProgress({ status: 'Extracted digital text stream!', progress: 100 });
+    return {
+      ...digitalResult,
+      engine: 'In-Browser Digital Text Engine (Instant)',
+    };
+  }
+
+  // 2. If it is a scanned document (images), run in-browser OCR using Tesseract.js
+  if (onProgress) onProgress({ status: 'Initializing in-browser OCR worker...', progress: 25 });
+  const { createWorker } = await import('tesseract.js');
+  const worker = await createWorker(language, 1, {
+    logger: (m) => {
+      if (onProgress && m.status === 'recognizing text') {
+        const pct = 25 + Math.round(m.progress * 70);
+        onProgress({ status: `Scanning text (${Math.round(m.progress * 100)}%)...`, progress: pct });
+      }
+    },
+  });
+
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+  const ocrPages = [];
+  let combinedText = '';
+
+  for (let i = 1; i <= numPages; i++) {
+    if (onProgress) onProgress({ status: `Processing page ${i} of ${numPages}...`, progress: Math.round((i / numPages) * 85) });
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+    const ret = await worker.recognize(canvas);
+    const pageText = ret.data.text.trim();
+    ocrPages.push({
+      pageNumber: i,
+      text: pageText,
+    });
+    if (pageText) {
+      combinedText += `--- Page ${i} ---\n` + pageText + '\n\n';
+    }
+  }
+
+  await worker.terminate();
+
+  return {
+    totalPages: numPages,
+    pages: ocrPages,
+    fullText: combinedText.trim() || 'No text recognized in scanned document.',
+    engine: 'In-Browser Tesseract Engine (Device CPU/WASM)',
+  };
+}
+
+/**
+ * Generate visual thumbnails for every page in a PDF using browser canvas.
+ */
+export async function clientGenerateThumbnails(file, maxThumbWidth = 220) {
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+  const previews = [];
+
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    const unscaledViewport = page.getViewport({ scale: 1 });
+    const scale = maxThumbWidth / unscaledViewport.width;
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+    previews.push({
+      id: `page-${i - 1}-${Date.now()}`,
+      originalIndex: i - 1,
+      pageNumber: i,
+      thumbnail: dataUrl,
+      rotationDelta: 0,
+      included: true,
+    });
+  }
+
+  return previews;
+}
+

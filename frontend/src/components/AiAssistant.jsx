@@ -3,12 +3,35 @@ import {
   Sparkles, MessageSquare, Table, FileText, Send, 
   Upload, Loader2, AlertCircle, Copy, CheckCircle, Bot, User, Key
 } from 'lucide-react';
+import { clientExtractPdfText } from '../services/clientPdfService';
+
+async function callDirectGemini(apiKey, prompt, systemInstruction = '') {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+  };
+  if (systemInstruction) {
+    body.system_instruction = { parts: [{ text: systemInstruction }] };
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || 'Gemini API call failed.');
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
 
 export default function AiAssistant({ apiKey, onOpenKeyModal }) {
   const [activeSubTab, setActiveSubTab] = useState('summary');
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [cachedText, setCachedText] = useState('');
 
   // Summary State
   const [summaryData, setSummaryData] = useState(null);
@@ -21,6 +44,14 @@ export default function AiAssistant({ apiKey, onOpenKeyModal }) {
   const [tableData, setTableData] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const getDocText = async (targetFile) => {
+    if (cachedText) return cachedText;
+    const extracted = await clientExtractPdfText(targetFile);
+    const txt = extracted.fullText || 'Document has minimal digital text.';
+    setCachedText(txt);
+    return txt;
+  };
+
   const handleFileUpload = (e) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
@@ -28,6 +59,7 @@ export default function AiAssistant({ apiKey, onOpenKeyModal }) {
       setSummaryData(null);
       setTableData(null);
       setChatMessages([]);
+      setCachedText('');
     }
   };
 
@@ -39,21 +71,58 @@ export default function AiAssistant({ apiKey, onOpenKeyModal }) {
 
     setLoading(true);
     setErrorMsg('');
-    const formData = new FormData();
-    formData.append('file', file);
-    if (apiKey) formData.append('api_key', apiKey);
 
+    // 1. Try local server endpoint if reachable
     try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (apiKey) formData.append('api_key', apiKey);
+
       const res = await fetch('/api/ai/summarize', {
         method: 'POST',
         body: formData,
       });
-      if (!res.ok) throw new Error('Summary generation failed.');
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed to analyze document.');
-      setSummaryData(data);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setSummaryData(data);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Direct client-side Gemini fallback
+    if (!apiKey) {
+      setErrorMsg('Please enter your Google Gemini API key to enable AI analysis in your browser.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const docText = await getDocText(file);
+      const prompt = `Analyze this document and provide a structured JSON response with exactly this schema:
+{
+  "summary": "2-3 paragraph overview",
+  "key_points": ["bullet 1", "bullet 2", "bullet 3"],
+  "action_items": ["action 1", "action 2"],
+  "word_count": 0
+}
+Document Text:
+${docText.substring(0, 40000)}`;
+
+      const raw = await callDirectGemini(apiKey, prompt, 'You are an executive document analysis assistant. Respond ONLY with valid JSON.');
+      const cleanJson = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      setSummaryData({
+        success: true,
+        summary: parsed.summary,
+        key_points: parsed.key_points || [],
+        action_items: parsed.action_items || [],
+        word_count: docText.split(/\s+/).length,
+      });
     } catch (err) {
-      setErrorMsg(err.message || 'Error communicating with AI engine.');
+      setErrorMsg(err.message || 'Error communicating with Gemini.');
     } finally {
       setLoading(false);
     }
@@ -69,22 +138,50 @@ export default function AiAssistant({ apiKey, onOpenKeyModal }) {
     setLoading(true);
     setErrorMsg('');
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('question', userQ);
-    if (apiKey) formData.append('api_key', apiKey);
-
+    // 1. Try server endpoint
     try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('question', userQ);
+      if (apiKey) formData.append('api_key', apiKey);
+
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         body: formData,
       });
-      if (!res.ok) throw new Error('Chat failed.');
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Chat query failed.');
-      setChatMessages((prev) => [...prev, { sender: 'ai', text: data.answer }]);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setChatMessages((prev) => [...prev, { sender: 'ai', text: data.answer }]);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Direct browser Gemini fallback
+    if (!apiKey) {
+      setChatMessages((prev) => [
+        ...prev, 
+        { sender: 'ai', text: '⚠️ Please enter your free Gemini API key using the top-right button to enable live document chat in the browser.' }
+      ]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const docText = await getDocText(file);
+      const prompt = `You are an AI document assistant answering a user's question about the following PDF document.
+Answer clearly, accurately, and politely based on the document text.
+
+Document Text:
+${docText.substring(0, 40000)}
+
+User Question: ${userQ}`;
+
+      const answer = await callDirectGemini(apiKey, prompt);
+      setChatMessages((prev) => [...prev, { sender: 'ai', text: answer }]);
     } catch (err) {
-      setErrorMsg(err.message || 'Chat error.');
       setChatMessages((prev) => [...prev, { sender: 'ai', text: `⚠️ Error: ${err.message}` }]);
     } finally {
       setLoading(false);
@@ -99,19 +196,48 @@ export default function AiAssistant({ apiKey, onOpenKeyModal }) {
 
     setLoading(true);
     setErrorMsg('');
-    const formData = new FormData();
-    formData.append('file', file);
-    if (apiKey) formData.append('api_key', apiKey);
 
+    // 1. Try server endpoint
     try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (apiKey) formData.append('api_key', apiKey);
+
       const res = await fetch('/api/ai/extract-tables', {
         method: 'POST',
         body: formData,
       });
-      if (!res.ok) throw new Error('Table extraction failed.');
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Extraction error.');
-      setTableData(data.data);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setTableData(data.data);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Direct browser Gemini fallback
+    if (!apiKey) {
+      setErrorMsg('Please enter your Google Gemini API key to enable table extraction in your browser.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const docText = await getDocText(file);
+      const prompt = `Find all structured data, tabular information, rows, and columns in this document.
+Format each table as clean Markdown tables with header and row dividers (| col1 | col2 |).
+If no tabular data exists, summarize numeric lists into a markdown table.
+
+Document Text:
+${docText.substring(0, 40000)}`;
+
+      const markdownTables = await callDirectGemini(apiKey, prompt, 'You are a data extraction assistant. Return markdown tables.');
+      setTableData({
+        markdown: markdownTables,
+        tableCount: 1,
+      });
     } catch (err) {
       setErrorMsg(err.message || 'Error extracting tables.');
     } finally {
