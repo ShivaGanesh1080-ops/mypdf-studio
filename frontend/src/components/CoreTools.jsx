@@ -10,7 +10,9 @@ import {
   clientRotatePdf, 
   clientDeletePages, 
   clientWatermarkPdf,
-  clientCompressPdf
+  clientCompressPdf,
+  clientProtectPdf,
+  clientUnlockPdf
 } from '../services/clientPdfService';
 
 export default function CoreTools() {
@@ -43,8 +45,8 @@ export default function CoreTools() {
     { id: 'rotate', title: 'Rotate PDF', desc: 'Rotate specific pages or entire documents 90°, 180°, or 270° clockwise.', icon: RotateCw, color: 'text-blue-600 bg-blue-50 border-blue-200', mode: 'Local' },
     { id: 'delete', title: 'Delete Pages', desc: 'Strip out unwanted pages from your document effortlessly.', icon: Trash2, color: 'text-rose-600 bg-rose-50 border-rose-200', mode: 'Local' },
     { id: 'watermark', title: 'Add Watermark', desc: 'Stamp text watermarks across every page with custom angle & opacity.', icon: Stamp, color: 'text-purple-600 bg-purple-50 border-purple-200', mode: 'Local' },
-    { id: 'protect', title: 'Protect PDF', desc: 'Encrypt document with strong AES-256 password protection.', icon: Lock, color: 'text-amber-600 bg-amber-50 border-amber-200', mode: 'Server Required' },
-    { id: 'unlock', title: 'Unlock PDF', desc: 'Remove password restrictions and decrypt protected documents.', icon: Unlock, color: 'text-teal-600 bg-teal-50 border-teal-200', mode: 'Server Required' },
+    { id: 'protect', title: 'Protect PDF', desc: 'Encrypt document with true client-side AES-256 password protection.', icon: Lock, color: 'text-amber-600 bg-amber-50 border-amber-200', mode: 'Local' },
+    { id: 'unlock', title: 'Unlock PDF', desc: 'Remove password restrictions and decrypt protected documents in browser.', icon: Unlock, color: 'text-teal-600 bg-teal-50 border-teal-200', mode: 'Local' },
   ];
 
   const handleFileChange = (e) => {
@@ -80,7 +82,7 @@ export default function CoreTools() {
 
     try {
       // 1. Client-Side Execution (Local in browser memory)
-      const isClientCapable = ['merge', 'split', 'rotate', 'delete', 'watermark', 'compress'].includes(selectedTool);
+      const isClientCapable = ['merge', 'split', 'rotate', 'delete', 'watermark', 'compress', 'protect', 'unlock'].includes(selectedTool);
 
       if (engineMode === 'client') {
         if (!isClientCapable) {
@@ -114,6 +116,12 @@ export default function CoreTools() {
             nw: (compResult.compressedSize / (1024 * 1024)).toFixed(2) + ' MB',
             saved: compResult.reductionRatio + '%',
           });
+        } else if (selectedTool === 'protect') {
+          clientBlob = await clientProtectPdf(files[0], password);
+          defaultName = `protected_${files[0].name}`;
+        } else if (selectedTool === 'unlock') {
+          clientBlob = await clientUnlockPdf(files[0], password);
+          defaultName = `unlocked_${files[0].name}`;
         }
 
         if (clientBlob) {

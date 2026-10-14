@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@pdfsmaller/pdf-decrypt": "^1.0.1",
+    "@pdfsmaller/pdf-encrypt": "^1.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "clsx": "^2.1.1",
     "jszip": "^3.10.2",

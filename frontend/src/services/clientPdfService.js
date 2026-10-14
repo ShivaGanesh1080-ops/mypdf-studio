@@ -1,6 +1,8 @@
 import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
+import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
+import { decryptPDF, isEncrypted } from '@pdfsmaller/pdf-decrypt';
 
 // Configure pdfjs worker to use unpkg CDN matching installed version
 if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
@@ -157,6 +159,85 @@ export async function clientWatermarkPdf(file, text, opacity = 0.25, fontSize = 
 
   const pdfBytes = await pdfDoc.save();
   return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+/**
+ * Encrypt a PDF with true AES-256 password protection directly in browser RAM via Web Crypto API.
+ */
+export async function clientProtectPdf(file, password) {
+  if (!password || !password.trim()) {
+    throw new Error('Please enter a password to encrypt the document.');
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const rawBytes = new Uint8Array(arrayBuffer);
+
+  const encInfo = await isEncrypted(rawBytes);
+  if (encInfo.encrypted) {
+    throw new Error('This document is already password-protected.');
+  }
+
+  const encryptedBytes = await encryptPDF(rawBytes, password.trim(), {
+    ownerPassword: password.trim(),
+    algorithm: 'AES-256',
+  });
+
+  return new Blob([encryptedBytes], { type: 'application/pdf' });
+}
+
+/**
+ * Decrypt / Remove password protection from a PDF in browser RAM using Web Crypto API.
+ */
+export async function clientUnlockPdf(file, password) {
+  if (!password || !password.trim()) {
+    throw new Error('Please enter the document password to unlock it.');
+  }
+  const arrayBuffer = await file.arrayBuffer();
+  const rawBytes = new Uint8Array(arrayBuffer);
+
+  const encInfo = await isEncrypted(rawBytes);
+  if (!encInfo.encrypted) {
+    throw new Error('This document is not password-protected. No password needed.');
+  }
+
+  try {
+    const decryptedBytes = await decryptPDF(rawBytes, password.trim());
+    return new Blob([decryptedBytes], { type: 'application/pdf' });
+  } catch (err) {
+    throw new Error('Incorrect password. Please verify and try again.');
+  }
+}
+
+/**
+ * Render all pages of a PDF to high-resolution images (PNG or JPG) and package into a ZIP file in browser RAM.
+ */
+export async function clientPdfToImages(file, format = 'png', dpi = 150) {
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+
+  const zip = new JSZip();
+  const scale = dpi / 72.0; // Standard 72 DPI base scale
+  const mimeType = format === 'jpeg' || format === 'jpg' ? 'image/jpeg' : 'image/png';
+  const ext = format === 'jpeg' || format === 'jpg' ? 'jpg' : 'png';
+
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    const dataUrl = canvas.toDataURL(mimeType, 0.92);
+    const base64Data = dataUrl.split(',')[1];
+    zip.file(`page_${String(i).padStart(3, '0')}.${ext}`, base64Data, { base64: true });
+  }
+
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  return zipBlob;
 }
 
 /**

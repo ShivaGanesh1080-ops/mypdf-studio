@@ -4,7 +4,7 @@ import {
   Upload, Download, Loader2, CheckCircle, AlertCircle, ArrowRight, Copy,
   Presentation, Sheet, FileType, Settings2, Trash2, ArrowLeft, FilePlus2, ArrowRightLeft
 } from 'lucide-react';
-import { clientImagesToPdf, clientTextToPdf, clientExtractPdfText } from '../services/clientPdfService';
+import { clientImagesToPdf, clientTextToPdf, clientExtractPdfText, clientPdfToImages } from '../services/clientPdfService';
 
 export default function FormatConverter() {
   const [activeCategory, setActiveCategory] = useState('to_pdf'); // 'to_pdf' or 'from_pdf'
@@ -91,6 +91,16 @@ export default function FormatConverter() {
       color: 'text-emerald-600 bg-emerald-50 border-emerald-200' 
     },
     { 
+      id: 'pdf2img', 
+      title: 'PDF to Images (PNG/JPG)', 
+      desc: 'Render every page to crisp high-resolution images, packaged in a ZIP download in browser RAM.', 
+      icon: ImageIcon, 
+      accept: '.pdf',
+      multiple: false,
+      mode: 'Local',
+      color: 'text-indigo-600 bg-indigo-50 border-indigo-200' 
+    },
+    { 
       id: 'pdf2docx', 
       title: 'PDF to Word (.docx)', 
       desc: 'Extract tables, layout, and text into an editable Microsoft Word document.', 
@@ -99,16 +109,6 @@ export default function FormatConverter() {
       multiple: false,
       mode: 'Server Required',
       color: 'text-blue-600 bg-blue-50 border-blue-200' 
-    },
-    { 
-      id: 'pdf2img', 
-      title: 'PDF to Images (PNG/JPG)', 
-      desc: 'Render every page to crisp high-resolution images, packaged in a ZIP download.', 
-      icon: ImageIcon, 
-      accept: '.pdf',
-      multiple: false,
-      mode: 'Server Required',
-      color: 'text-indigo-600 bg-indigo-50 border-indigo-200' 
     },
   ];
 
@@ -195,6 +195,17 @@ export default function FormatConverter() {
           throw new Error('Digital text extraction error: ' + (extractErr.message || 'Failed to read PDF'));
         }
       }
+      else if (activeMode === 'pdf2img') {
+        try {
+          const zipBlob = await clientPdfToImages(files[0], imgFormat, dpi);
+          setResultUrl(window.URL.createObjectURL(zipBlob));
+          setResultFileName(`${files[0].name.replace('.pdf', '')}_images.zip`);
+          setLoading(false);
+          return;
+        } catch (imgErr) {
+          throw new Error('PDF to Images conversion error: ' + (imgErr.message || 'Failed'));
+        }
+      }
       else if (activeMode === 'docx2pdf') {
         endpoint = '/api/convert/docx-to-pdf';
         formData.append('file', files[0]);
@@ -214,13 +225,6 @@ export default function FormatConverter() {
         endpoint = '/api/convert/pdf-to-docx';
         formData.append('file', files[0]);
         defaultName = `${files[0].name.replace('.pdf', '')}.docx`;
-      }
-      else if (activeMode === 'pdf2img') {
-        endpoint = '/api/convert/pdf-to-images';
-        formData.append('file', files[0]);
-        formData.append('img_format', imgFormat);
-        formData.append('dpi', dpi);
-        defaultName = `${files[0].name.replace('.pdf', '')}_images.zip`;
       }
 
       const res = await fetch(endpoint, { method: 'POST', body: formData });
