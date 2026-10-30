@@ -84,7 +84,13 @@ export default function CoreTools({ backendHealthy }) {
       // 1. Client-Side Execution (Local in browser memory)
       const isClientCapable = ['merge', 'split', 'rotate', 'delete', 'watermark', 'compress', 'protect', 'unlock'].includes(selectedTool);
 
-      if (engineMode === 'client') {
+      // If user selected client mode OR if backend is offline, execute 100% locally in browser
+      if (engineMode === 'client' || (engineMode === 'server' && backendHealthy === false)) {
+        if (engineMode === 'server' && backendHealthy === false) {
+          // Seamlessly auto-switch to client mode
+          setEngineMode('client');
+        }
+
         if (!isClientCapable) {
           throw new Error(`The '${selectedTool}' feature requires the dedicated Python security engine. Switch Engine Mode to 'Server Processing' or run the local Python backend to proceed.`);
         }
@@ -258,7 +264,13 @@ export default function CoreTools({ backendHealthy }) {
             </button>
             <button
               type="button"
-              onClick={() => setEngineMode('server')}
+              onClick={() => {
+                if (backendHealthy === false) {
+                  setErrorMsg('Notice: Local Python server is offline. All core PDF tools run 100% locally on your computer in Client Device Mode without needing any server.');
+                  return;
+                }
+                setEngineMode('server');
+              }}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 engineMode === 'server'
                   ? 'bg-red-600 text-white shadow-xs'
@@ -266,7 +278,9 @@ export default function CoreTools({ backendHealthy }) {
               }`}
             >
               <span>🚀 Server Mode</span>
-              <span className="hidden md:inline text-[10px] font-normal opacity-90">(Python Engine)</span>
+              <span className="hidden md:inline text-[10px] font-normal opacity-90">
+                {backendHealthy === false ? '(Offline)' : '(Python Engine)'}
+              </span>
             </button>
           </div>
           <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
@@ -418,17 +432,17 @@ export default function CoreTools({ backendHealthy }) {
 
           {selectedTool === 'compress' && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Compression Engine Level</label>
-              <div className="flex gap-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Compression Engine Level</label>
+              <div className="flex flex-wrap gap-2">
                 {['low', 'medium', 'high'].map((lvl) => (
                   <button
                     key={lvl}
                     type="button"
                     onClick={() => setCompressQuality(lvl)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border capitalize ${
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border capitalize cursor-pointer transition-all ${
                       compressQuality === lvl
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     {lvl === 'low' ? 'Maximum Compression' : lvl === 'medium' ? 'Standard Balanced' : 'High Visual Quality'}
@@ -441,16 +455,16 @@ export default function CoreTools({ backendHealthy }) {
           {selectedTool === 'watermark' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Watermark Text</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Watermark Text</label>
                 <input
                   type="text"
                   value={watermarkText}
                   onChange={(e) => setWatermarkText(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Opacity ({Math.round(watermarkOpacity * 100)}%)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Opacity ({Math.round(watermarkOpacity * 100)}%)</label>
                 <input
                   type="range"
                   min="0.05"
@@ -462,21 +476,21 @@ export default function CoreTools({ backendHealthy }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Font Size ({watermarkSize}px)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Font Size ({watermarkSize}px)</label>
                 <input
                   type="number"
                   value={watermarkSize}
                   onChange={(e) => setWatermarkSize(Number(e.target.value))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Angle ({watermarkAngle}°)</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Angle ({watermarkAngle}°)</label>
                 <input
                   type="number"
                   value={watermarkAngle}
                   onChange={(e) => setWatermarkAngle(Number(e.target.value))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 />
               </div>
             </div>
@@ -484,7 +498,7 @@ export default function CoreTools({ backendHealthy }) {
 
           {(selectedTool === 'protect' || selectedTool === 'unlock') && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 {selectedTool === 'protect' ? 'Set Encryption Password (AES-256)' : 'Enter Document Password'}
               </label>
               <input
@@ -492,13 +506,13 @@ export default function CoreTools({ backendHealthy }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password..."
-                className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
               />
             </div>
           )}
 
           {selectedTool === 'merge' && (
-            <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               Files will be concatenated in the order uploaded. Uploaded files: <strong>{files.length}</strong>
             </p>
           )}
@@ -506,9 +520,24 @@ export default function CoreTools({ backendHealthy }) {
 
         {/* Error message */}
         {errorMsg && (
-          <div className="mt-4 p-3 bg-red-50 text-red-700 text-xs rounded-lg flex items-center gap-2 border border-red-200">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
+          <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 text-xs rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-red-200 dark:border-red-900/60">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+            {errorMsg.includes('Client Device Mode') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEngineMode('client');
+                  setErrorMsg('');
+                  setTimeout(handleProcess, 50);
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs transition-all"
+              >
+                Switch to Client Mode & Run Now
+              </button>
+            )}
           </div>
         )}
 
