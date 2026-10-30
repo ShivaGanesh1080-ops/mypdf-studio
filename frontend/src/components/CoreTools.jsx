@@ -15,7 +15,7 @@ import {
   clientUnlockPdf
 } from '../services/clientPdfService';
 
-export default function CoreTools() {
+export default function CoreTools({ backendHealthy }) {
   const [selectedTool, setSelectedTool] = useState('merge');
   const [engineMode, setEngineMode] = useState('client'); // 'client' (Local In-Browser) or 'server'
   const [files, setFiles] = useState([]);
@@ -134,6 +134,9 @@ export default function CoreTools() {
       }
 
       // 2. Server Execution Mode (Explicit server request)
+      if (backendHealthy === false) {
+        throw new Error('Local Python server is not reachable. Launch start.ps1 or run_app.bat on your PC, or switch to "Client Device Mode" above to process this document 100% locally in your browser.');
+      }
       const formData = new FormData();
       let endpoint = '';
       let defaultName = 'output.pdf';
@@ -267,7 +270,11 @@ export default function CoreTools() {
             </button>
           </div>
           <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
-            {engineMode === 'client' ? '• 0 server load & instant execution' : '• Deep PyMuPDF engine processing'}
+            {engineMode === 'client' 
+              ? '• 0 server load & instant execution in browser RAM' 
+              : backendHealthy === false
+                ? '• ⚠️ Local Python backend offline (launch start.ps1)'
+                : '• Deep PyMuPDF engine processing'}
           </span>
         </div>
 

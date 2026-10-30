@@ -603,3 +603,361 @@ export async function clientGenerateThumbnails(file, maxThumbWidth = 220) {
   return previews;
 }
 
+/**
+ * Parses raw CSV text handling quotes, escapes, commas, and line endings.
+ */
+function parseCsvRows(text) {
+  const rows = [];
+  let currentRow = [];
+  let currentVal = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const next = text[i + 1];
+
+    if (c === '"') {
+      if (inQuotes && next === '"') {
+        currentVal += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (c === ',' && !inQuotes) {
+      currentRow.push(currentVal.trim());
+      currentVal = '';
+    } else if ((c === '\r' || c === '\n') && !inQuotes) {
+      if (c === '\r' && next === '\n') i++;
+      currentRow.push(currentVal.trim());
+      if (currentRow.some((cell) => cell.length > 0)) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentVal = '';
+    } else {
+      currentVal += c;
+    }
+  }
+
+  if (currentVal || currentRow.length > 0) {
+    currentRow.push(currentVal.trim());
+    if (currentRow.some((cell) => cell.length > 0)) rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+/**
+ * Convert CSV spreadsheet to a styled tabular PDF in browser RAM.
+ */
+export async function clientCsvToPdf(file) {
+  const text = await file.text();
+  const rows = parseCsvRows(text);
+
+  if (rows.length === 0) {
+    throw new Error('CSV file is empty or contains no parseable data.');
+  }
+
+  const pdfDoc = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const colCount = Math.max(...rows.map((r) => r.length));
+  // Landscape if > 4 columns for readability
+  const isLandscape = colCount > 4;
+  const pageWidth = isLandscape ? 841.89 : 595.28;
+  const pageHeight = isLandscape ? 595.28 : 841.89;
+
+  const margin = 36;
+  const usableWidth = pageWidth - 2 * margin;
+  const colWidth = usableWidth / Math.max(1, colCount);
+
+  const rowHeight = 22;
+  const fontSize = colCount > 6 ? 8 : 9;
+  const headerFontSize = colCount > 6 ? 8.5 : 9.5;
+
+  let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+  let currentY = pageHeight - margin;
+
+  const drawHeader = (page, y) => {
+    // Header background bar
+    page.drawRectangle({
+      x: margin,
+      y: y - rowHeight,
+      width: usableWidth,
+      height: rowHeight,
+      color: rgb(0.92, 0.94, 0.98),
+      borderColor: rgb(0.75, 0.8, 0.88),
+      borderWidth: 1,
+    });
+
+    const headerRow = rows[0];
+    for (let c = 0; c < colCount; c++) {
+      const cellText = headerRow[c] || `Col ${c + 1}`;
+      // Clean string truncation if wider than cell
+      let displayText = cellText;
+      while (displayText.length > 0 && fontBold.widthOfTextAtSize(displayText + '...', headerFontSize) > colWidth - 8) {
+        displayText = displayText.slice(0, -1);
+      }
+      if (displayText !== cellText) displayText += '...';
+
+      page.drawText(displayText, {
+        x: margin + c * colWidth + 5,
+        y: y - rowHeight + 6,
+        size: headerFontSize,
+        font: fontBold,
+        color: rgb(0.12, 0.16, 0.28),
+      });
+    }
+  };
+
+  // Draw initial header
+  drawHeader(currentPage, currentY);
+  currentY -= rowHeight;
+
+  // Render Data Rows
+  for (let r = 1; r < rows.length; r++) {
+    if (currentY - rowHeight < margin + 20) {
+      // Add page and repeat header
+      currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+      currentY = pageHeight - margin;
+      drawHeader(currentPage, currentY);
+      currentY -= rowHeight;
+    }
+
+    const row = rows[r];
+    const isEven = r % 2 === 0;
+
+    // Row background
+    currentPage.drawRectangle({
+      x: margin,
+      y: currentY - rowHeight,
+      width: usableWidth,
+      height: rowHeight,
+      color: isEven ? rgb(0.98, 0.99, 1.0) : rgb(1, 1, 1),
+      borderColor: rgb(0.88, 0.9, 0.93),
+      borderWidth: 0.5,
+    });
+
+    for (let c = 0; c < colCount; c++) {
+      const val = row[c] || '';
+      let displayText = String(val);
+
+      while (displayText.length > 0 && fontReg.widthOfTextAtSize(displayText + '...', fontSize) > colWidth - 8) {
+        displayText = displayText.slice(0, -1);
+      }
+      if (displayText !== String(val)) displayText += '...';
+
+      if (displayText) {
+        currentPage.drawText(displayText, {
+          x: margin + c * colWidth + 5,
+          y: currentY - rowHeight + 6,
+          size: fontSize,
+          font: fontReg,
+          color: rgb(0.18, 0.22, 0.28),
+        });
+      }
+    }
+
+    currentY -= rowHeight;
+  }
+
+  const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+/**
+ * Convert Markdown (.md) documents to beautifully styled PDFs with word wrapping & pagination.
+ */
+export async function clientMarkdownToPdf(file) {
+  const textContent = await file.text();
+  const pdfDoc = await PDFDocument.create();
+
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
+
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 44;
+  const usableWidth = pageWidth - 2 * margin;
+
+  let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+  let currentY = pageHeight - margin;
+
+  const checkPageSpace = (neededHeight) => {
+    if (currentY - neededHeight < margin) {
+      currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+      currentY = pageHeight - margin;
+    }
+  };
+
+  const lines = textContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  let inCodeBlock = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+
+    // Code block toggle
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      currentY -= 6;
+      continue;
+    }
+
+    if (inCodeBlock) {
+      checkPageSpace(14);
+      currentPage.drawRectangle({
+        x: margin,
+        y: currentY - 12,
+        width: usableWidth,
+        height: 14,
+        color: rgb(0.95, 0.96, 0.98),
+      });
+      currentPage.drawText(line.slice(0, 80), {
+        x: margin + 8,
+        y: currentY - 10,
+        size: 9,
+        font: fontMono,
+        color: rgb(0.18, 0.22, 0.32),
+      });
+      currentY -= 14;
+      continue;
+    }
+
+    // Horizontal Rule
+    if (line.trim() === '---' || line.trim() === '***' || line.trim() === '___') {
+      checkPageSpace(16);
+      currentPage.drawLine({
+        start: { x: margin, y: currentY - 6 },
+        end: { x: pageWidth - margin, y: currentY - 6 },
+        thickness: 1,
+        color: rgb(0.85, 0.88, 0.92),
+      });
+      currentY -= 16;
+      continue;
+    }
+
+    // Blank line
+    if (line.trim().length === 0) {
+      currentY -= 10;
+      continue;
+    }
+
+    // Heading 1 (# )
+    if (line.startsWith('# ')) {
+      checkPageSpace(32);
+      currentY -= 8;
+      currentPage.drawText(line.substring(2).trim(), {
+        x: margin,
+        y: currentY - 18,
+        size: 18,
+        font: fontBold,
+        color: rgb(0.1, 0.14, 0.22),
+      });
+      currentY -= 28;
+      continue;
+    }
+
+    // Heading 2 (## )
+    if (line.startsWith('## ')) {
+      checkPageSpace(26);
+      currentY -= 6;
+      currentPage.drawText(line.substring(3).trim(), {
+        x: margin,
+        y: currentY - 14,
+        size: 14,
+        font: fontBold,
+        color: rgb(0.15, 0.2, 0.3),
+      });
+      currentY -= 22;
+      continue;
+    }
+
+    // Heading 3 (### )
+    if (line.startsWith('### ')) {
+      checkPageSpace(22);
+      currentY -= 4;
+      currentPage.drawText(line.substring(4).trim(), {
+        x: margin,
+        y: currentY - 12,
+        size: 12,
+        font: fontBold,
+        color: rgb(0.2, 0.25, 0.35),
+      });
+      currentY -= 18;
+      continue;
+    }
+
+    // Blockquote (> )
+    if (line.startsWith('> ')) {
+      const quoteText = line.substring(2).trim();
+      checkPageSpace(16);
+      currentPage.drawLine({
+        start: { x: margin + 2, y: currentY },
+        end: { x: margin + 2, y: currentY - 14 },
+        thickness: 3,
+        color: rgb(0.7, 0.75, 0.85),
+      });
+      currentPage.drawText(quoteText, {
+        x: margin + 14,
+        y: currentY - 10,
+        size: 10,
+        font: fontReg,
+        color: rgb(0.35, 0.4, 0.48),
+      });
+      currentY -= 16;
+      continue;
+    }
+
+    // List item (- or * or 1.)
+    let isBullet = false;
+    let listContent = line;
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      isBullet = true;
+      listContent = line.substring(2).trim();
+    } else if (/^\d+\.\s/.test(line)) {
+      isBullet = true;
+      listContent = line.replace(/^\d+\.\s/, '').trim();
+    }
+
+    // Word wrap paragraph or bullet
+    const indent = isBullet ? 16 : 0;
+    const availWidth = usableWidth - indent;
+    const words = listContent.split(' ');
+    let currentLine = '';
+
+    for (let w = 0; w < words.length; w++) {
+      const word = words[w];
+      const testLine = currentLine.length === 0 ? word : currentLine + ' ' + word;
+      const testWidth = fontReg.widthOfTextAtSize(testLine, 10);
+
+      if (testWidth <= availWidth) {
+        currentLine = testLine;
+      } else {
+        if (currentLine.length > 0) {
+          checkPageSpace(14);
+          if (isBullet && w === words.indexOf(currentLine.split(' ')[0])) {
+            currentPage.drawText('•', { x: margin + 4, y: currentY - 10, size: 12, font: fontBold, color: rgb(0.85, 0.2, 0.2) });
+          }
+          currentPage.drawText(currentLine, { x: margin + indent, y: currentY - 10, size: 10, font: fontReg, color: rgb(0.18, 0.22, 0.28) });
+          currentY -= 14;
+        }
+        currentLine = word;
+      }
+    }
+
+    if (currentLine.length > 0) {
+      checkPageSpace(14);
+      if (isBullet && words.length <= currentLine.split(' ').length) {
+        currentPage.drawText('•', { x: margin + 4, y: currentY - 10, size: 12, font: fontBold, color: rgb(0.85, 0.2, 0.2) });
+      }
+      currentPage.drawText(currentLine, { x: margin + indent, y: currentY - 10, size: 10, font: fontReg, color: rgb(0.18, 0.22, 0.28) });
+      currentY -= 14;
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+

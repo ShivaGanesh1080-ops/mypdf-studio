@@ -103,13 +103,14 @@ export default function App() {
       {/* Main Content Area with Smooth Tab Transitions */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div key={activeTab} className="animate-fade-in-up">
-          {activeTab === 'core' && <CoreTools />}
+          {activeTab === 'core' && <CoreTools backendHealthy={backendHealthy} />}
           {activeTab === 'visual' && <VisualStudio />}
-          {activeTab === 'converter' && <FormatConverter />}
+          {activeTab === 'converter' && <FormatConverter backendHealthy={backendHealthy} />}
           {activeTab === 'ocr' && <OcrStudio />}
           {activeTab === 'ai' && (
             <AiAssistant
               apiKey={apiKey}
+              backendHealthy={backendHealthy}
               onOpenKeyModal={() => {
                 const navKeyBtn = document.querySelector('[data-key-btn]');
                 if (navKeyBtn) navKeyBtn.click();
