@@ -5,12 +5,16 @@ import VisualStudio from './components/VisualStudio';
 import FormatConverter from './components/FormatConverter';
 import OcrStudio from './components/OcrStudio';
 import AiAssistant from './components/AiAssistant';
-import { ShieldCheck, HardDrive, Cpu, Sparkles } from 'lucide-react';
+import CommandPalette from './components/CommandPalette';
+import { ShieldCheck, HardDrive, Cpu, Sparkles, WifiOff } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('core');
+  const [activeCoreToolId, setActiveCoreToolId] = useState('merge');
   const [apiKey, setApiKey] = useState('');
   const [backendHealthy, setBackendHealthy] = useState(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   // Dark Mode State
   const [theme, setTheme] = useState(() => {
@@ -32,6 +36,33 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  // Online / Offline Listeners
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Global Command Palette Shortcut (⌘K or Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // PWA Install Prompt State
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -50,7 +81,6 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // Check if running in standalone mode (already installed)
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
       setIsInstalled(true);
     }
@@ -85,8 +115,25 @@ export default function App() {
       .catch(() => setBackendHealthy(false));
   }, []);
 
+  const handleCommandPaletteSelect = (action) => {
+    if (action.tab) {
+      setActiveTab(action.tab);
+    }
+    if (action.toolId) {
+      setActiveCoreToolId(action.toolId);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 flex flex-col text-slate-800 dark:text-slate-100 antialiased transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 flex flex-col text-slate-800 dark:text-slate-100 antialiased transition-colors duration-200 selection:bg-red-500/20 selection:text-red-600">
+      {/* Offline Toast Banner */}
+      {isOffline && (
+        <div className="bg-amber-500 text-white text-xs font-semibold py-1.5 px-4 text-center flex items-center justify-center gap-2 shadow-xs z-50">
+          <WifiOff className="w-3.5 h-3.5" />
+          <span>You are currently offline. All core PDF editing, creation, and OCR tools run 100% locally in your browser!</span>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
@@ -98,12 +145,20 @@ export default function App() {
         toggleTheme={toggleTheme}
         onInstallClick={handleInstallClick}
         isInstalled={isInstalled}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        isOffline={isOffline}
       />
 
       {/* Main Content Area with Smooth Tab Transitions */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div key={activeTab} className="animate-fade-in-up">
-          {activeTab === 'core' && <CoreTools backendHealthy={backendHealthy} />}
+          {activeTab === 'core' && (
+            <CoreTools 
+              backendHealthy={backendHealthy} 
+              activeToolId={activeCoreToolId}
+              onToolChange={setActiveCoreToolId}
+            />
+          )}
           {activeTab === 'visual' && <VisualStudio />}
           {activeTab === 'converter' && <FormatConverter backendHealthy={backendHealthy} />}
           {activeTab === 'ocr' && <OcrStudio />}
@@ -120,11 +175,18 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modern Footer */}
-      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 mt-auto py-8 transition-colors duration-200">
+      {/* Global Command Palette */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onSelectAction={handleCommandPaletteSelect}
+      />
+
+      {/* Modern High-End Footer */}
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-white/10 mt-auto py-8 transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 pb-8 border-b border-slate-100 dark:border-slate-800/80 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 pb-8 border-b border-slate-100 dark:border-white/10 text-xs">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/60 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-4 h-4" />

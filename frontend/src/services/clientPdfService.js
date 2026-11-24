@@ -1,12 +1,12 @@
-import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, degrees, StandardFonts, PDFName } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
 import { decryptPDF, isEncrypted } from '@pdfsmaller/pdf-decrypt';
 
-// Configure pdfjs worker to use unpkg CDN matching installed version
+// Configure pdfjs worker to use local bundled worker (100% offline-ready, 0 external CDN calls)
 if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 /**
@@ -958,6 +958,210 @@ export async function clientMarkdownToPdf(file) {
   }
 
   const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+/**
+ * Inspect document metadata (title, author, producer, timestamps, page count).
+ */
+export async function clientInspectMetadata(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  const formatDate = (d) => {
+    if (!d) return 'Not specified';
+    try {
+      return new Date(d).toLocaleString();
+    } catch (_) {
+      return String(d);
+    }
+  };
+
+  return {
+    fileName: file.name,
+    fileSize: (file.size / 1024).toFixed(1) + ' KB',
+    pageCount: pdfDoc.getPageCount(),
+    title: pdfDoc.getTitle() || '(Empty / Not set)',
+    author: pdfDoc.getAuthor() || '(Empty / Not set)',
+    subject: pdfDoc.getSubject() || '(Empty / Not set)',
+    keywords: pdfDoc.getKeywords() || '(Empty / Not set)',
+    creator: pdfDoc.getCreator() || '(Empty / Not set)',
+    producer: pdfDoc.getProducer() || '(Empty / Not set)',
+    creationDate: formatDate(pdfDoc.getCreationDate()),
+    modificationDate: formatDate(pdfDoc.getModificationDate()),
+  };
+}
+
+/**
+ * Sanitize & strip metadata, author info, edit histories, and XMP streams for total privacy.
+ */
+export async function clientSanitizePdf(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+  // Clear Info dictionary
+  pdfDoc.setTitle('');
+  pdfDoc.setAuthor('');
+  pdfDoc.setSubject('');
+  pdfDoc.setKeywords([]);
+  pdfDoc.setProducer('MyPDF Studio (Sanitized In-Browser)');
+  pdfDoc.setCreator('');
+  pdfDoc.setCreationDate(new Date(0));
+  pdfDoc.setModificationDate(new Date(0));
+
+  // Strip catalog XMP metadata stream
+  try {
+    const catalog = pdfDoc.catalog;
+    const metadataKey = PDFName.of('Metadata');
+    if (catalog.has(metadataKey)) {
+      catalog.delete(metadataKey);
+    }
+    const pieceInfoKey = PDFName.of('PieceInfo');
+    if (catalog.has(pieceInfoKey)) {
+      catalog.delete(pieceInfoKey);
+    }
+  } catch (err) {
+    console.warn('Metadata catalog strip warning:', err);
+  }
+
+  const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+/**
+ * Add customizable page numbers / bates stamping across all pages.
+ */
+export async function clientAddPageNumbers(file, options = {}) {
+  const {
+    position = 'bottom-center',
+    format = 'page-n-of-total',
+    startNumber = 1,
+    fontSize = 10,
+    colorHex = '#475569',
+    margin = 32,
+  } = options;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // Convert hex color to rgb
+  const cleanHex = colorHex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16) / 255 || 0.28;
+  const g = parseInt(cleanHex.substring(2, 4), 16) / 255 || 0.33;
+  const b = parseInt(cleanHex.substring(4, 6), 16) / 255 || 0.41;
+  const textColor = rgb(r, g, b);
+
+  const pages = pdfDoc.getPages();
+  const totalPages = pages.length;
+
+  for (let i = 0; i < totalPages; i++) {
+    const page = pages[i];
+    const { width, height } = page.getSize();
+    const curNum = startNumber + i;
+    const totalCount = startNumber + totalPages - 1;
+
+    let text = '';
+    if (format === 'page-n-of-total') {
+      text = `Page ${curNum} of ${totalCount}`;
+    } else if (format === 'n-of-total') {
+      text = `${curNum} / ${totalCount}`;
+    } else if (format === 'page-n') {
+      text = `Page ${curNum}`;
+    } else {
+      text = `${curNum}`;
+    }
+
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    let x = margin;
+    let y = margin;
+
+    // Horizontal
+    if (position.includes('center')) {
+      x = (width - textWidth) / 2;
+    } else if (position.includes('right')) {
+      x = width - margin - textWidth;
+    } else {
+      x = margin;
+    }
+
+    // Vertical
+    if (position.includes('top')) {
+      y = height - margin - fontSize;
+    } else {
+      y = margin;
+    }
+
+    page.drawText(text, {
+      x,
+      y,
+      size: fontSize,
+      font,
+      color: textColor,
+    });
+  }
+
+  const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
+/**
+ * Convert color PDF to grayscale monochrome directly in-browser for high ink-savings or print prep.
+ */
+export async function clientGrayscalePdf(file, onProgress = null) {
+  const arrayBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+
+  const newDoc = await PDFDocument.create();
+
+  for (let i = 1; i <= numPages; i++) {
+    if (onProgress) {
+      onProgress({ status: `Converting page ${i} of ${numPages} to grayscale...`, progress: Math.round((i / numPages) * 88) });
+    }
+
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 }); // 144 DPI high crispness
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    // Fast luminance formula: Y = 0.299R + 0.587G + 0.114B
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+    for (let p = 0; p < data.length; p += 4) {
+      const gray = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+      data[p] = gray;
+      data[p + 1] = gray;
+      data[p + 2] = gray;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    const base64Data = jpegDataUrl.split(',')[1];
+    const binaryStr = atob(base64Data);
+    const jpegBytes = new Uint8Array(binaryStr.length);
+    for (let b = 0; b < binaryStr.length; b++) {
+      jpegBytes[b] = binaryStr.charCodeAt(b);
+    }
+
+    const embeddedImg = await newDoc.embedJpg(jpegBytes);
+    const origViewport = page.getViewport({ scale: 1.0 });
+    const newPage = newDoc.addPage([origViewport.width, origViewport.height]);
+    newPage.drawImage(embeddedImg, {
+      x: 0,
+      y: 0,
+      width: origViewport.width,
+      height: origViewport.height,
+    });
+  }
+
+  if (onProgress) onProgress({ status: 'Finalizing monochrome document...', progress: 98 });
+  const pdfBytes = await newDoc.save({ useObjectStreams: true });
   return new Blob([pdfBytes], { type: 'application/pdf' });
 }
 

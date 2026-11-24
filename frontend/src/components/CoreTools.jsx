@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Combine, Scissors, RotateCw, Trash2, Minimize2, 
-  Stamp, Lock, Unlock, Upload, Download, CheckCircle, AlertCircle, Loader2, ArrowRight
+  Stamp, Lock, Unlock, Upload, Download, CheckCircle, 
+  AlertCircle, Loader2, ArrowRight, Hash, ShieldCheck, 
+  SunMedium, FileText, X, Copy, Check, FileCheck, Layers
 } from 'lucide-react';
 
 import { 
@@ -12,11 +14,15 @@ import {
   clientWatermarkPdf,
   clientCompressPdf,
   clientProtectPdf,
-  clientUnlockPdf
+  clientUnlockPdf,
+  clientAddPageNumbers,
+  clientSanitizePdf,
+  clientInspectMetadata,
+  clientGrayscalePdf
 } from '../services/clientPdfService';
 
-export default function CoreTools({ backendHealthy }) {
-  const [selectedTool, setSelectedTool] = useState('merge');
+export default function CoreTools({ backendHealthy, activeToolId, onToolChange }) {
+  const [selectedTool, setSelectedTool] = useState(activeToolId || 'merge');
   const [engineMode, setEngineMode] = useState('client'); // 'client' (Local In-Browser) or 'server'
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,6 +30,9 @@ export default function CoreTools({ backendHealthy }) {
   const [resultFileName, setResultFileName] = useState('');
   const [compressStats, setCompressStats] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [progressStatus, setProgressStatus] = useState('');
+  const [metadataInfo, setMetadataInfo] = useState(null);
+  const [copiedMeta, setCopiedMeta] = useState(false);
 
   // Tool parameter states
   const [splitRange, setSplitRange] = useState('1-3');
@@ -38,24 +47,85 @@ export default function CoreTools({ backendHealthy }) {
   const [watermarkColor, setWatermarkColor] = useState('#888888');
   const [password, setPassword] = useState('');
 
+  // New tool parameters
+  const [pageNumberPosition, setPageNumberPosition] = useState('bottom-center');
+  const [pageNumberFormat, setPageNumberFormat] = useState('page-n-of-total');
+  const [pageNumberStart, setPageNumberStart] = useState(1);
+  const [pageNumberSize, setPageNumberSize] = useState(10);
+  const [pageNumberColor, setPageNumberColor] = useState('#475569');
+
+  useEffect(() => {
+    if (activeToolId && activeToolId !== selectedTool) {
+      setSelectedTool(activeToolId);
+      setFiles([]);
+      setResultUrl(null);
+      setErrorMsg('');
+      setCompressStats(null);
+      setMetadataInfo(null);
+    }
+  }, [activeToolId]);
+
   const tools = [
-    { id: 'merge', title: 'Merge PDFs', desc: 'Combine multiple PDFs into a single document in your chosen order.', icon: Combine, color: 'text-red-600 bg-red-50 border-red-200', mode: 'Local' },
-    { id: 'split', title: 'Split PDF', desc: 'Extract specific page ranges (e.g. 1-4, 7) into a separate clean PDF.', icon: Scissors, color: 'text-orange-600 bg-orange-50 border-orange-200', mode: 'Local' },
-    { id: 'compress', title: 'Compress PDF', desc: 'Stream-deflate and deduplicate PDF object streams in browser RAM.', icon: Minimize2, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', mode: 'Local' },
-    { id: 'rotate', title: 'Rotate PDF', desc: 'Rotate specific pages or entire documents 90°, 180°, or 270° clockwise.', icon: RotateCw, color: 'text-blue-600 bg-blue-50 border-blue-200', mode: 'Local' },
-    { id: 'delete', title: 'Delete Pages', desc: 'Strip out unwanted pages from your document effortlessly.', icon: Trash2, color: 'text-rose-600 bg-rose-50 border-rose-200', mode: 'Local' },
-    { id: 'watermark', title: 'Add Watermark', desc: 'Stamp text watermarks across every page with custom angle & opacity.', icon: Stamp, color: 'text-purple-600 bg-purple-50 border-purple-200', mode: 'Local' },
-    { id: 'protect', title: 'Protect PDF', desc: 'Encrypt document with true client-side AES-256 password protection.', icon: Lock, color: 'text-amber-600 bg-amber-50 border-amber-200', mode: 'Local' },
-    { id: 'unlock', title: 'Unlock PDF', desc: 'Remove password restrictions and decrypt protected documents in browser.', icon: Unlock, color: 'text-teal-600 bg-teal-50 border-teal-200', mode: 'Local' },
+    { id: 'merge', title: 'Merge PDFs', desc: 'Combine multiple PDFs into a single document in your chosen order.', icon: Combine, color: 'text-red-500 bg-red-500/10 border-red-500/20', mode: 'Local' },
+    { id: 'split', title: 'Split PDF', desc: 'Extract specific page ranges (e.g. 1-4, 7) into a separate clean PDF.', icon: Scissors, color: 'text-orange-500 bg-orange-500/10 border-orange-500/20', mode: 'Local' },
+    { id: 'compress', title: 'Compress PDF', desc: 'Stream-deflate and deduplicate PDF object streams in browser RAM.', icon: Minimize2, color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20', mode: 'Local' },
+    { id: 'pagenumber', title: 'Add Page Numbers', desc: 'Stamp dynamic numbering (Page X of Y, Bates numbering) across all pages.', icon: Hash, color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20', mode: 'New • Local' },
+    { id: 'sanitize', title: 'Sanitize & Privacy', desc: 'Strip hidden author info, edit history, and XMP streams before sharing.', icon: ShieldCheck, color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/20', mode: 'New • Local' },
+    { id: 'grayscale', title: 'Grayscale / Ink Saver', desc: 'Convert color documents to clean monochrome to save printer ink.', icon: SunMedium, color: 'text-amber-500 bg-amber-500/10 border-amber-500/20', mode: 'New • Local' },
+    { id: 'rotate', title: 'Rotate PDF', desc: 'Rotate specific pages or entire documents 90°, 180°, or 270° clockwise.', icon: RotateCw, color: 'text-blue-500 bg-blue-500/10 border-blue-500/20', mode: 'Local' },
+    { id: 'delete', title: 'Delete Pages', desc: 'Strip out unwanted pages from your document effortlessly.', icon: Trash2, color: 'text-rose-500 bg-rose-500/10 border-rose-500/20', mode: 'Local' },
+    { id: 'watermark', title: 'Add Watermark', desc: 'Stamp text watermarks across every page with custom angle & opacity.', icon: Stamp, color: 'text-purple-500 bg-purple-500/10 border-purple-500/20', mode: 'Local' },
+    { id: 'metadata', title: 'Inspect Metadata', desc: 'View title, author, producer, creation timestamps, and page metrics.', icon: FileText, color: 'text-slate-500 bg-slate-500/10 border-slate-500/20', mode: 'New • Local' },
+    { id: 'protect', title: 'Protect PDF', desc: 'Encrypt document with true client-side AES-256 password protection.', icon: Lock, color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20', mode: 'Local' },
+    { id: 'unlock', title: 'Unlock PDF', desc: 'Remove password restrictions and decrypt protected documents in browser.', icon: Unlock, color: 'text-teal-500 bg-teal-500/10 border-teal-500/20', mode: 'Local' },
   ];
+
+  const handleSelectTool = (toolId) => {
+    setSelectedTool(toolId);
+    setFiles([]);
+    setResultUrl(null);
+    setErrorMsg('');
+    setCompressStats(null);
+    setMetadataInfo(null);
+    if (onToolChange) onToolChange(toolId);
+  };
 
   const handleFileChange = (e) => {
     setErrorMsg('');
     setResultUrl(null);
     setCompressStats(null);
+    setMetadataInfo(null);
     if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+      if (selectedTool === 'merge') {
+        setFiles((prev) => [...prev, ...Array.from(e.target.files)]);
+      } else {
+        setFiles(Array.from(e.target.files));
+      }
     }
+  };
+
+  const handleRemoveFile = (index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setResultUrl(null);
+    setMetadataInfo(null);
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const handleCopyMetadata = () => {
+    if (!metadataInfo) return;
+    const text = Object.entries(metadataInfo)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedMeta(true);
+    setTimeout(() => setCopiedMeta(false), 2000);
   };
 
   const handleProcess = async () => {
@@ -74,7 +144,7 @@ export default function CoreTools({ backendHealthy }) {
 
     setLoading(true);
     setErrorMsg('');
-    // Invalidate any previous result URL
+    setProgressStatus('');
     if (resultUrl) {
       window.URL.revokeObjectURL(resultUrl);
       setResultUrl(null);
@@ -82,17 +152,19 @@ export default function CoreTools({ backendHealthy }) {
 
     try {
       // 1. Client-Side Execution (Local in browser memory)
-      const isClientCapable = ['merge', 'split', 'rotate', 'delete', 'watermark', 'compress', 'protect', 'unlock'].includes(selectedTool);
+      const isClientCapable = [
+        'merge', 'split', 'rotate', 'delete', 'watermark', 
+        'compress', 'protect', 'unlock', 'pagenumber', 
+        'sanitize', 'grayscale', 'metadata'
+      ].includes(selectedTool);
 
-      // If user selected client mode OR if backend is offline, execute 100% locally in browser
       if (engineMode === 'client' || (engineMode === 'server' && backendHealthy === false)) {
         if (engineMode === 'server' && backendHealthy === false) {
-          // Seamlessly auto-switch to client mode
           setEngineMode('client');
         }
 
         if (!isClientCapable) {
-          throw new Error(`The '${selectedTool}' feature requires the dedicated Python security engine. Switch Engine Mode to 'Server Processing' or run the local Python backend to proceed.`);
+          throw new Error(`The '${selectedTool}' feature requires the server engine.`);
         }
 
         let clientBlob = null;
@@ -122,6 +194,26 @@ export default function CoreTools({ backendHealthy }) {
             nw: (compResult.compressedSize / (1024 * 1024)).toFixed(2) + ' MB',
             saved: compResult.reductionRatio + '%',
           });
+        } else if (selectedTool === 'pagenumber') {
+          clientBlob = await clientAddPageNumbers(files[0], {
+            position: pageNumberPosition,
+            format: pageNumberFormat,
+            startNumber: pageNumberStart,
+            fontSize: pageNumberSize,
+            colorHex: pageNumberColor,
+          });
+          defaultName = `numbered_${files[0].name}`;
+        } else if (selectedTool === 'sanitize') {
+          clientBlob = await clientSanitizePdf(files[0]);
+          defaultName = `sanitized_${files[0].name}`;
+        } else if (selectedTool === 'grayscale') {
+          clientBlob = await clientGrayscalePdf(files[0], ({ status }) => setProgressStatus(status));
+          defaultName = `grayscale_${files[0].name}`;
+        } else if (selectedTool === 'metadata') {
+          const meta = await clientInspectMetadata(files[0]);
+          setMetadataInfo(meta);
+          setLoading(false);
+          return;
         } else if (selectedTool === 'protect') {
           clientBlob = await clientProtectPdf(files[0], password);
           defaultName = `protected_${files[0].name}`;
@@ -141,8 +233,9 @@ export default function CoreTools({ backendHealthy }) {
 
       // 2. Server Execution Mode (Explicit server request)
       if (backendHealthy === false) {
-        throw new Error('Local Python server is not reachable. Launch start.ps1 or run_app.bat on your PC, or switch to "Client Device Mode" above to process this document 100% locally in your browser.');
+        throw new Error('Local Python server is offline. Switch to "Client Device Mode" above to process this document 100% locally in your browser.');
       }
+
       const formData = new FormData();
       let endpoint = '';
       let defaultName = 'output.pdf';
@@ -196,29 +289,12 @@ export default function CoreTools({ backendHealthy }) {
       });
 
       if (!res.ok) {
-        if (res.status === 404) {
-          throw new Error('Backend server is offline or unreachable (404). Start the local Python backend service or switch to in-browser local tools.');
-        }
         let errDetail = 'Processing failed.';
         try {
           const errJson = await res.json();
           errDetail = errJson.detail || errDetail;
         } catch (_) {}
         throw new Error(errDetail);
-      }
-
-      // Check compress stats in headers if available
-      if (selectedTool === 'compress') {
-        const orig = res.headers.get('X-Original-Size');
-        const nw = res.headers.get('X-New-Size');
-        const saved = res.headers.get('X-Saved-Percent');
-        if (orig && nw) {
-          setCompressStats({
-            orig: (parseInt(orig) / (1024 * 1024)).toFixed(2) + ' MB',
-            nw: (parseInt(nw) / (1024 * 1024)).toFixed(2) + ' MB',
-            saved: saved + '%',
-          });
-        }
       }
 
       const blob = await res.blob();
@@ -229,25 +305,26 @@ export default function CoreTools({ backendHealthy }) {
       setErrorMsg(err.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
+      setProgressStatus('');
     }
   };
 
   const activeToolObj = tools.find((t) => t.id === selectedTool);
 
   return (
-    <div className="space-y-8">
-      {/* Tool Selector Cards */}
+    <div className="space-y-6">
+      {/* Header section */}
       <div>
         <div className="text-center max-w-2xl mx-auto mb-4">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight text-balance">
             Core PDF Power Tools
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Unlimited, private PDF operations running 100% locally on your computer.
+            Unlimited, zero-upload PDF operations running 100% locally on your computer.
           </p>
         </div>
 
-        {/* Client vs Server Processing Toggle */}
+        {/* Engine mode bar */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 mb-6">
           <div className="bg-slate-100/90 dark:bg-slate-900/90 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
             <button
@@ -292,41 +369,40 @@ export default function CoreTools({ backendHealthy }) {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        {/* Tool Selector Cards Grid (12 Tools) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {tools.map((tool) => {
             const Icon = tool.icon;
             const isSelected = selectedTool === tool.id;
             return (
               <button
                 key={tool.id}
-                onClick={() => {
-                  setSelectedTool(tool.id);
-                  setFiles([]);
-                  setResultUrl(null);
-                  setErrorMsg('');
-                  setCompressStats(null);
-                }}
-                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer min-h-[140px] interactive-card ${
+                onClick={() => handleSelectTool(tool.id)}
+                className={`group p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer min-h-[140px] ${
                   isSelected
-                    ? 'border-red-500 bg-red-50/40 dark:bg-red-950/30 shadow-sm ring-2 ring-red-500/20 scale-[1.01]'
-                    : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
+                    ? 'border-red-500 bg-red-50/50 dark:bg-red-950/30 shadow-md ring-2 ring-red-500/20 scale-[1.01]'
+                    : 'border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
                 }`}
               >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center border mb-3 transition-transform duration-200 group-hover:scale-110 shadow-xs ${tool.color}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center border mb-3 transition-transform duration-200 group-hover:scale-110 shadow-2xs ${tool.color}`}>
                   <Icon className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">{tool.title}</span>
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors">
+                      {tool.title}
+                    </span>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide ${
-                      tool.mode === 'Local' 
-                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400' 
-                        : 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400'
+                      tool.mode.includes('New')
+                        ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 font-extrabold'
+                        : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400'
                     }`}>
                       {tool.mode}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">{tool.desc}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                    {tool.desc}
+                  </div>
                 </div>
               </button>
             );
@@ -334,24 +410,47 @@ export default function CoreTools({ backendHealthy }) {
         </div>
       </div>
 
-      {/* Active Tool Workspace */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-xs transition-colors duration-200">
-        <div className="flex items-center gap-3 pb-5 border-b border-slate-100 dark:border-slate-800">
+      {/* Active Tool Workspace Container */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-white/10 p-6 sm:p-8 shadow-xs transition-colors duration-200">
+        
+        {/* Workspace Title Header */}
+        <div className="flex items-center gap-3 pb-5 border-b border-slate-100 dark:border-white/10">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${activeToolObj?.color}`}>
             {activeToolObj && <activeToolObj.icon className="w-5 h-5" />}
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{activeToolObj?.title}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">{activeToolObj?.title}</h2>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/40">
+                In-Browser Memory
+              </span>
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">{activeToolObj?.desc}</p>
           </div>
         </div>
 
         {/* Upload Zone */}
         <div className="mt-6">
-          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-            {selectedTool === 'merge' ? 'Select 2 or more PDF documents' : 'Select PDF document'}
-          </label>
-          <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-red-400 dark:hover:border-red-500 bg-slate-50/60 dark:bg-slate-950/40 hover:bg-red-50/20 dark:hover:bg-red-950/20 rounded-xl p-8 text-center transition-all cursor-pointer">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              {selectedTool === 'merge' ? 'Select 2 or more PDF documents' : 'Select PDF document'}
+            </label>
+            {files.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFiles([]);
+                  setResultUrl(null);
+                  setMetadataInfo(null);
+                }}
+                className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 cursor-pointer"
+              >
+                Clear Selected Files
+              </button>
+            )}
+          </div>
+
+          <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-red-400 dark:hover:border-red-500 bg-slate-50/60 dark:bg-slate-950/40 hover:bg-red-50/20 dark:hover:bg-red-950/20 rounded-2xl p-8 text-center transition-all cursor-pointer">
             <input
               type="file"
               accept=".pdf"
@@ -362,22 +461,70 @@ export default function CoreTools({ backendHealthy }) {
             <div className="flex flex-col items-center pointer-events-none">
               <Upload className="w-8 h-8 text-slate-400 dark:text-slate-500 mb-2" />
               <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200">
-                {files.length > 0
-                  ? `${files.length} file(s) selected: ${files.map((f) => f.name).join(', ')}`
-                  : 'Click or drag & drop PDF files here'}
+                {selectedTool === 'merge'
+                  ? 'Click or drag & drop multiple PDF files to combine'
+                  : 'Click or drag & drop a PDF document here'}
               </p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">No file size limits • Processed locally</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Zero file size limits • Processed entirely in browser RAM
+              </p>
             </div>
           </div>
+
+          {/* Selected Files Badge List */}
+          {files.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                Attached Files ({files.length}):
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {files.map((f, idx) => (
+                  <div
+                    key={`${f.name}-${idx}`}
+                    className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span className="truncate font-medium">{f.name}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 tabular-nums shrink-0">
+                        ({formatFileSize(f.size)})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFile(idx)}
+                      className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 transition-colors"
+                      title="Remove file"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Tool Options */}
-        <div className="mt-6 bg-slate-50 dark:bg-slate-950/60 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800 transition-colors">
-          <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">Tool Parameters</h3>
+        {/* Tool Parameters Card */}
+        <div className="mt-6 bg-slate-50 dark:bg-slate-950/60 rounded-xl p-4 border border-slate-200/80 dark:border-white/10 transition-colors">
+          <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">
+            Tool Parameters
+          </h3>
 
+          {/* Merge Parameters */}
+          {selectedTool === 'merge' && (
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Files will be concatenated in the order uploaded. You can reorder pages visually in the{' '}
+              <span className="text-red-600 font-semibold cursor-pointer">Visual Page Studio</span>.
+            </p>
+          )}
+
+          {/* Split Parameters */}
           {selectedTool === 'split' && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Pages to Extract (1-indexed)</label>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Pages to Extract (1-indexed)
+              </label>
               <input
                 type="text"
                 value={splitRange}
@@ -385,10 +532,134 @@ export default function CoreTools({ backendHealthy }) {
                 placeholder="e.g. 1-3, 5, 8-10 or all"
                 className="w-full sm:w-80 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
               />
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Enter comma-separated single pages or ranges.</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Enter comma-separated single pages or ranges (e.g. 1-3, 5).
+              </p>
             </div>
           )}
 
+          {/* Compress Parameters */}
+          {selectedTool === 'compress' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Compression Engine Level
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {['low', 'medium', 'high'].map((lvl) => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => setCompressQuality(lvl)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border capitalize cursor-pointer transition-all ${
+                      compressQuality === lvl
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {lvl === 'low' ? 'Maximum Compression' : lvl === 'medium' ? 'Standard Balanced' : 'High Visual Quality'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add Page Numbers Parameters */}
+          {selectedTool === 'pagenumber' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Position
+                </label>
+                <select
+                  value={pageNumberPosition}
+                  onChange={(e) => setPageNumberPosition(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                >
+                  <option value="bottom-center">Bottom Center (Standard)</option>
+                  <option value="bottom-right">Bottom Right</option>
+                  <option value="bottom-left">Bottom Left</option>
+                  <option value="top-center">Top Center</option>
+                  <option value="top-right">Top Right</option>
+                  <option value="top-left">Top Left</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Format Style
+                </label>
+                <select
+                  value={pageNumberFormat}
+                  onChange={(e) => setPageNumberFormat(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                >
+                  <option value="page-n-of-total">Page 1 of 10</option>
+                  <option value="n-of-total">1 / 10</option>
+                  <option value="page-n">Page 1</option>
+                  <option value="n">1 (Number only)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Start Number
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={pageNumberStart}
+                  onChange={(e) => setPageNumberStart(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Font Size ({pageNumberSize}pt)
+                </label>
+                <input
+                  type="number"
+                  min="6"
+                  max="24"
+                  value={pageNumberSize}
+                  onChange={(e) => setPageNumberSize(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Sanitize & Privacy Parameters */}
+          {selectedTool === 'sanitize' && (
+            <div className="p-3 bg-cyan-50/80 dark:bg-cyan-950/30 border border-cyan-200/80 dark:border-cyan-800/40 rounded-xl text-xs text-cyan-900 dark:text-cyan-200">
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">Total Document Privacy Sanitization</p>
+                  <p className="text-cyan-800 dark:text-cyan-300/90 leading-relaxed text-[11px]">
+                    This operation will strip out all document metadata, author details, creator software, edit history, modification timestamps, and embedded XMP streams in browser RAM before saving.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Grayscale Parameters */}
+          {selectedTool === 'grayscale' && (
+            <div className="p-3 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 rounded-xl text-xs text-amber-900 dark:text-amber-200">
+              <div className="flex items-start gap-2.5">
+                <SunMedium className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">Ink-Saver Monochrome Conversion</p>
+                  <p className="text-amber-800 dark:text-amber-300/90 leading-relaxed text-[11px]">
+                    Converts full-color PDF documents to monochrome grayscale using standard luminance analysis (0.299R + 0.587G + 0.114B). Perfect for contracts and textbooks to prevent excessive color toner consumption.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Rotate Parameters */}
           {selectedTool === 'rotate' && (
             <div className="flex flex-wrap items-center gap-4">
               <div>
@@ -416,6 +687,7 @@ export default function CoreTools({ backendHealthy }) {
             </div>
           )}
 
+          {/* Delete Parameters */}
           {selectedTool === 'delete' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Pages to Remove</label>
@@ -430,28 +702,7 @@ export default function CoreTools({ backendHealthy }) {
             </div>
           )}
 
-          {selectedTool === 'compress' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Compression Engine Level</label>
-              <div className="flex flex-wrap gap-2">
-                {['low', 'medium', 'high'].map((lvl) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    onClick={() => setCompressQuality(lvl)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border capitalize cursor-pointer transition-all ${
-                      compressQuality === lvl
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {lvl === 'low' ? 'Maximum Compression' : lvl === 'medium' ? 'Standard Balanced' : 'High Visual Quality'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {/* Watermark Parameters */}
           {selectedTool === 'watermark' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               <div>
@@ -496,6 +747,7 @@ export default function CoreTools({ backendHealthy }) {
             </div>
           )}
 
+          {/* Protect & Unlock Parameters */}
           {(selectedTool === 'protect' || selectedTool === 'unlock') && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -511,12 +763,21 @@ export default function CoreTools({ backendHealthy }) {
             </div>
           )}
 
-          {selectedTool === 'merge' && (
+          {/* Inspect Metadata Placeholder */}
+          {selectedTool === 'metadata' && (
             <p className="text-xs text-slate-600 dark:text-slate-400">
-              Files will be concatenated in the order uploaded. Uploaded files: <strong>{files.length}</strong>
+              Click &quot;Inspect Document Metadata&quot; below to read the embedded metadata tags, author info, and creation timestamps directly from the document stream.
             </p>
           )}
         </div>
+
+        {/* Progress Status Message */}
+        {progressStatus && (
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs rounded-xl flex items-center gap-2 border border-blue-200 dark:border-blue-900/60">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            <span>{progressStatus}</span>
+          </div>
+        )}
 
         {/* Error message */}
         {errorMsg && (
@@ -541,12 +802,12 @@ export default function CoreTools({ backendHealthy }) {
           </div>
         )}
 
-        {/* Action Button */}
+        {/* Action Button & Download */}
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button
             onClick={handleProcess}
             disabled={loading || files.length === 0}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-200 disabled:opacity-50 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-200 dark:shadow-none disabled:opacity-50 transition-all cursor-pointer active:scale-95"
           >
             {loading ? (
               <>
@@ -566,7 +827,7 @@ export default function CoreTools({ backendHealthy }) {
             <a
               href={resultUrl}
               download={resultFileName}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-200 transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-200 dark:shadow-none transition-all active:scale-95"
             >
               <Download className="w-4 h-4" />
               <span>Download {resultFileName}</span>
@@ -576,7 +837,7 @@ export default function CoreTools({ backendHealthy }) {
 
         {/* Compression statistics */}
         {compressStats && (
-          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-4 text-xs text-emerald-800">
+          <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-xl flex items-center gap-4 text-xs text-emerald-800 dark:text-emerald-300">
             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
             <div>
               {parseFloat(compressStats.saved) > 1.0 ? (
@@ -585,9 +846,54 @@ export default function CoreTools({ backendHealthy }) {
                 </>
               ) : (
                 <>
-                  <strong>Compression Result:</strong> {compressStats.orig} &rarr; {compressStats.nw} ({compressStats.saved} saved). <span className="text-slate-600 font-normal">This PDF is already highly optimized or consists of pure vector text without downsampleable images. Maximum visual sharpness was preserved.</span>
+                  <strong>Compression Result:</strong> {compressStats.orig} &rarr; {compressStats.nw} ({compressStats.saved} saved). <span className="opacity-80">This PDF is already highly optimized or consists of vector text. Maximum visual sharpness was preserved.</span>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Metadata Inspector Card */}
+        {metadataInfo && (
+          <div className="mt-6 p-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/60 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10">
+              <span className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                Extracted Document Metadata
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyMetadata}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-300 transition-all cursor-pointer shadow-2xs"
+              >
+                {copiedMeta ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedMeta ? 'Copied!' : 'Copy Metadata'}</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-white/5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block uppercase font-semibold">Title</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{metadataInfo.title}</span>
+              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-white/5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block uppercase font-semibold">Author</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{metadataInfo.author}</span>
+              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-white/5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block uppercase font-semibold">Total Pages</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 tabular-nums">{metadataInfo.pageCount} pages</span>
+              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-white/5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block uppercase font-semibold">Creator</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{metadataInfo.creator}</span>
+              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-white/5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block uppercase font-semibold">Producer</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{metadataInfo.producer}</span>
+              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-white/5">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block uppercase font-semibold">Created Date</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{metadataInfo.creationDate}</span>
+              </div>
             </div>
           </div>
         )}

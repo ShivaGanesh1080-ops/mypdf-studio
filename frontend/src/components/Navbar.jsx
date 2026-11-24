@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   FileText, Key, ShieldCheck, Sparkles, 
-  Wrench, LayoutGrid, FilePlus2, ScanText, Sun, Moon, Download
+  Wrench, LayoutGrid, FilePlus2, ScanText, Sun, Moon, Download, Search
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -13,7 +13,9 @@ export default function Navbar({
   theme,
   toggleTheme,
   onInstallClick,
-  isInstalled
+  isInstalled,
+  onOpenCommandPalette,
+  isOffline
 }) {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [tempKey, setTempKey] = useState(apiKey || '');
@@ -41,13 +43,13 @@ export default function Navbar({
 
   return (
     <>
-      <header className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 shadow-xs transition-colors duration-200">
+      <header className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-white/10 sticky top-0 z-40 shadow-xs transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-16 gap-3">
             
             {/* Logo */}
             <div 
-              className="flex items-center gap-3 cursor-pointer group select-none" 
+              className="flex items-center gap-3 cursor-pointer group select-none shrink-0" 
               onClick={() => setActiveTab('core')}
             >
               <img 
@@ -65,14 +67,16 @@ export default function Navbar({
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">100% Private • In-Browser Processing</p>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    {isOffline ? 'Offline Mode • 100% In-Browser' : '100% Private • In-Browser Processing'}
+                  </p>
                 </div>
               </div>
             </div>
 
             {/* Navigation Tabs (Desktop & Tablet) */}
-            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/80 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 transition-colors duration-200">
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/80 dark:border-white/10 transition-colors duration-200">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -80,9 +84,9 @@ export default function Navbar({
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                       isActive
-                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700 scale-[1.02]'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-white/10 scale-[1.02]'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/50'
                     }`}
                   >
@@ -94,11 +98,27 @@ export default function Navbar({
             </nav>
 
             {/* Right Action buttons */}
-            <div className="flex items-center gap-2">
-              <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/70 dark:border-emerald-800/50 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Zero Server Uploads</span>
-              </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Command Palette Trigger */}
+              <button
+                type="button"
+                onClick={onOpenCommandPalette}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-white transition-all shadow-2xs cursor-pointer active:scale-95"
+                title="Open Command Palette (⌘K or Ctrl+K)"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Search tools...</span>
+                <kbd className="text-[10px] font-semibold bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">⌘K</kbd>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenCommandPalette}
+                className="sm:hidden w-8 h-8 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shadow-2xs active:scale-95"
+                title="Search tools"
+              >
+                <Search className="w-4 h-4" />
+              </button>
 
               {/* Install App (PWA) Button */}
               {!isInstalled && (
@@ -149,7 +169,7 @@ export default function Navbar({
         </div>
 
         {/* Mobile Navigation Tabs (Scrollable pill bar with hidden scrollbar) */}
-        <div className="lg:hidden flex items-center overflow-x-auto px-3 py-2 bg-slate-50/95 dark:bg-slate-900/95 border-t border-slate-200/80 dark:border-slate-800 gap-1.5 no-scrollbar scroll-smooth transition-colors duration-200">
+        <div className="lg:hidden flex items-center overflow-x-auto px-3 py-2 bg-slate-50/95 dark:bg-slate-900/95 border-t border-slate-200/80 dark:border-white/10 gap-1.5 no-scrollbar scroll-smooth transition-colors duration-200">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
