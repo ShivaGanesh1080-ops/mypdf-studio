@@ -3,8 +3,9 @@ import {
   FileText, Image as ImageIcon, FileCode, FileDown, 
   Upload, Download, Loader2, CheckCircle, AlertCircle, ArrowRight, Copy,
   Presentation, Sheet, FileType, Settings2, Trash2, ArrowLeft, FilePlus2, ArrowRightLeft,
-  Info, Cpu
+  Info, Cpu, Eye, EyeOff
 } from 'lucide-react';
+import PdfPreview from './PdfPreview';
 import { 
   clientImagesToPdf, 
   clientTextToPdf, 
@@ -22,6 +23,8 @@ export default function FormatConverter({ backendHealthy }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [resultUrl, setResultUrl] = useState(null);
   const [resultFileName, setResultFileName] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewInputPdf, setPreviewInputPdf] = useState(false);
   const [extractedText, setExtractedText] = useState('');
   const [copiedText, setCopiedText] = useState(false);
 
@@ -149,6 +152,8 @@ export default function FormatConverter({ backendHealthy }) {
     setActiveMode(newTool);
     setFiles([]);
     setResultUrl(null);
+    setShowPreview(false);
+    setPreviewInputPdf(false);
     setExtractedText('');
     setErrorMsg('');
   };
@@ -159,6 +164,8 @@ export default function FormatConverter({ backendHealthy }) {
       window.URL.revokeObjectURL(resultUrl);
       setResultUrl(null);
     }
+    setShowPreview(false);
+    setPreviewInputPdf(false);
     setExtractedText('');
     if (e.target.files) {
       setFiles(Array.from(e.target.files));
@@ -167,6 +174,7 @@ export default function FormatConverter({ backendHealthy }) {
 
   const removeFile = (idx) => {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
+    setPreviewInputPdf(false);
   };
 
   const handleConvert = async () => {
@@ -177,6 +185,7 @@ export default function FormatConverter({ backendHealthy }) {
 
     setLoading(true);
     setErrorMsg('');
+    setShowPreview(false);
     if (resultUrl) {
       window.URL.revokeObjectURL(resultUrl);
       setResultUrl(null);
@@ -375,7 +384,10 @@ export default function FormatConverter({ backendHealthy }) {
               onClick={() => {
                 setActiveMode(tool.id);
                 setFiles([]);
+                if (resultUrl) window.URL.revokeObjectURL(resultUrl);
                 setResultUrl(null);
+                setShowPreview(false);
+                setPreviewInputPdf(false);
                 setExtractedText('');
                 setErrorMsg('');
               }}
@@ -454,6 +466,31 @@ export default function FormatConverter({ backendHealthy }) {
             </div>
           </div>
         </div>
+
+        {/* Single PDF input preview toggle (for From-PDF tools) */}
+        {files.length > 0 && !currentMode.multiple && files[0]?.name.toLowerCase().endsWith('.pdf') && (
+          <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs">
+            <span className="font-medium text-slate-700 dark:text-slate-200 truncate">
+              Selected PDF: {files[0].name}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewInputPdf((prev) => !prev)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer transition-colors"
+            >
+              {previewInputPdf ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{previewInputPdf ? 'Hide Source Preview' : 'Preview Source PDF'}</span>
+            </button>
+          </div>
+        )}
+
+        {previewInputPdf && files[0]?.name.toLowerCase().endsWith('.pdf') && (
+          <PdfPreview
+            file={files[0]}
+            fileName={files[0].name}
+            onClose={() => setPreviewInputPdf(false)}
+          />
+        )}
 
         {/* File previews list if multiple files selected */}
         {files.length > 0 && currentMode.multiple && (
@@ -574,18 +611,44 @@ export default function FormatConverter({ backendHealthy }) {
             )}
           </button>
 
-          {/* Download button */}
+          {/* Download & Preview buttons */}
           {resultUrl && (
-            <a
-              href={resultUrl}
-              download={resultFileName}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-200 dark:shadow-emerald-950/40 transition-all"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download {resultFileName}</span>
-            </a>
+            <>
+              <a
+                href={resultUrl}
+                download={resultFileName}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-200 dark:shadow-emerald-950/40 transition-all"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download {resultFileName}</span>
+              </a>
+
+              {resultFileName.toLowerCase().endsWith('.pdf') && (
+                <button
+                  type="button"
+                  onClick={() => setShowPreview((prev) => !prev)}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 ${
+                    showPreview
+                      ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-indigo-950/40'
+                  }`}
+                >
+                  {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  <span>{showPreview ? 'Hide Preview' : 'Preview PDF'}</span>
+                </button>
+              )}
+            </>
           )}
         </div>
+
+        {/* Live PDF Preview Panel */}
+        {showPreview && resultUrl && resultFileName.toLowerCase().endsWith('.pdf') && (
+          <PdfPreview
+            url={resultUrl}
+            fileName={resultFileName}
+            onClose={() => setShowPreview(false)}
+          />
+        )}
 
         {/* Extracted Text display */}
         {extractedText && (

@@ -3,8 +3,9 @@ import {
   Combine, Scissors, RotateCw, Trash2, Minimize2, 
   Stamp, Lock, Unlock, Upload, Download, CheckCircle, 
   AlertCircle, Loader2, ArrowRight, Hash, ShieldCheck, 
-  SunMedium, FileText, X, Copy, Check, FileCheck, Layers
+  SunMedium, FileText, X, Copy, Check, FileCheck, Layers, Eye, EyeOff
 } from 'lucide-react';
+import PdfPreview from './PdfPreview';
 
 import { 
   clientMergePdfs, 
@@ -28,6 +29,8 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
   const [loading, setLoading] = useState(false);
   const [resultUrl, setResultUrl] = useState(null);
   const [resultFileName, setResultFileName] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewInputFile, setPreviewInputFile] = useState(null);
   const [compressStats, setCompressStats] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [progressStatus, setProgressStatus] = useState('');
@@ -59,6 +62,8 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
       setSelectedTool(activeToolId);
       setFiles([]);
       setResultUrl(null);
+      setShowPreview(false);
+      setPreviewInputFile(null);
       setErrorMsg('');
       setCompressStats(null);
       setMetadataInfo(null);
@@ -84,6 +89,8 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
     setSelectedTool(toolId);
     setFiles([]);
     setResultUrl(null);
+    setShowPreview(false);
+    setPreviewInputFile(null);
     setErrorMsg('');
     setCompressStats(null);
     setMetadataInfo(null);
@@ -93,6 +100,8 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
   const handleFileChange = (e) => {
     setErrorMsg('');
     setResultUrl(null);
+    setShowPreview(false);
+    setPreviewInputFile(null);
     setCompressStats(null);
     setMetadataInfo(null);
     if (e.target.files) {
@@ -107,6 +116,8 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
   const handleRemoveFile = (index) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
     setResultUrl(null);
+    setShowPreview(false);
+    setPreviewInputFile(null);
     setMetadataInfo(null);
   };
 
@@ -145,6 +156,7 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
     setLoading(true);
     setErrorMsg('');
     setProgressStatus('');
+    setShowPreview(false);
     if (resultUrl) {
       window.URL.revokeObjectURL(resultUrl);
       setResultUrl(null);
@@ -441,6 +453,8 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
                 onClick={() => {
                   setFiles([]);
                   setResultUrl(null);
+                  setShowPreview(false);
+                  setPreviewInputFile(null);
                   setMetadataInfo(null);
                 }}
                 className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 cursor-pointer"
@@ -490,17 +504,38 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
                         ({formatFileSize(f.size)})
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFile(idx)}
-                      className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 transition-colors"
-                      title="Remove file"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewInputFile(previewInputFile === f ? null : f)}
+                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                          previewInputFile === f
+                            ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400'
+                            : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                        }`}
+                        title={previewInputFile === f ? 'Close preview' : 'Preview uploaded PDF'}
+                      >
+                        {previewInputFile === f ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(idx)}
+                        className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                        title="Remove file"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
+              {previewInputFile && (
+                <PdfPreview
+                  file={previewInputFile}
+                  fileName={previewInputFile.name}
+                  onClose={() => setPreviewInputFile(null)}
+                />
+              )}
             </div>
           )}
         </div>
@@ -822,16 +857,31 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
             )}
           </button>
 
-          {/* Download button */}
+          {/* Download & Preview buttons */}
           {resultUrl && (
-            <a
-              href={resultUrl}
-              download={resultFileName}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-200 dark:shadow-none transition-all active:scale-95"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download {resultFileName}</span>
-            </a>
+            <>
+              <a
+                href={resultUrl}
+                download={resultFileName}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-200 dark:shadow-none transition-all active:scale-95"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download {resultFileName}</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setShowPreview((prev) => !prev)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 ${
+                  showPreview
+                    ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-none'
+                }`}
+              >
+                {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                <span>{showPreview ? 'Hide Preview' : 'Preview PDF'}</span>
+              </button>
+            </>
           )}
         </div>
 
@@ -851,6 +901,16 @@ export default function CoreTools({ backendHealthy, activeToolId, onToolChange }
               )}
             </div>
           </div>
+        )}
+
+        {/* Live Result PDF Preview */}
+        {showPreview && resultUrl && (
+          <PdfPreview
+            url={resultUrl}
+            fileName={resultFileName}
+            password={selectedTool === 'protect' ? password : ''}
+            onClose={() => setShowPreview(false)}
+          />
         )}
 
         {/* Metadata Inspector Card */}

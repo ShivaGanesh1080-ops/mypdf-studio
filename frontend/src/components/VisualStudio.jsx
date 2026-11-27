@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Upload, RotateCw, RotateCcw, Trash2, ArrowLeft, ArrowRight, 
-  Copy, Download, Loader2, CheckCircle, RefreshCw, EyeOff, LayoutGrid, CheckSquare, FileText
+  Copy, Download, Loader2, CheckCircle, RefreshCw, EyeOff, Eye, LayoutGrid, CheckSquare, FileText
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { clientApplyVisualEdits, clientGenerateThumbnails } from '../services/clientPdfService';
+import PdfPreview from './PdfPreview';
 
 export default function VisualStudio() {
   const [file, setFile] = useState(null);
@@ -14,11 +15,13 @@ export default function VisualStudio() {
   const [exporting, setExporting] = useState(false);
   const [resultUrl, setResultUrl] = useState(null);
   const [resultFileName, setResultFileName] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   const [initialPages, setInitialPages] = useState([]);
 
   // Invalidate any active export link so users never download a stale document
   const invalidateExport = () => {
+    setShowPreview(false);
     if (resultUrl) {
       window.URL.revokeObjectURL(resultUrl);
       setResultUrl(null);
@@ -272,21 +275,45 @@ export default function VisualStudio() {
         </div>
       )}
 
-      {/* Download Bar when export is ready */}
+      {/* Download & Preview Bar when export is ready */}
       {resultUrl && (
-        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex items-center justify-between shadow-xs animate-fade-in-up">
-          <div className="flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
-            <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Reorganized document ready: {resultFileName}</span>
+        <div className="space-y-4">
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-fade-in-up">
+            <div className="flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
+              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Reorganized document ready: {resultFileName}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPreview((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer ${
+                  showPreview
+                    ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                }`}
+              >
+                {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{showPreview ? 'Hide Preview' : 'Preview PDF'}</span>
+              </button>
+              <a
+                href={resultUrl}
+                download={resultFileName}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Now</span>
+              </a>
+            </div>
           </div>
-          <a
-            href={resultUrl}
-            download={resultFileName}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Now</span>
-          </a>
+
+          {showPreview && (
+            <PdfPreview
+              url={resultUrl}
+              fileName={resultFileName}
+              onClose={() => setShowPreview(false)}
+            />
+          )}
         </div>
       )}
 
