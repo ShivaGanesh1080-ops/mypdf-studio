@@ -10,6 +10,136 @@ if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
 }
 
 /**
+ * Comprehensive Unicode -> WinAnsi transliterator and sanitizer.
+ * Standard PDF fonts (Helvetica, Times, Courier) use Windows-1252 (WinAnsi) encoding.
+ * Native WinAnsi glyphs (e.g. '•', '–', '—', '“', '”', '©', '™', '°', '±', 'é') are preserved;
+ * characters outside WinAnsi (arrows '→', math '≥', currency '₹', box-drawing, emojis) are
+ * cleanly mapped to readable ASCII equivalents or decomposed cleanly, never throwing.
+ */
+const WINANSI_UNICODE_MAP = {
+  // Arrows & Directional
+  '→': '->', '➔': '->', '➜': '->', '➝': '->', '➞': '->', '➟': '->',
+  '➠': '->', '➡': '->', '➢': '->', '➣': '->', '➤': '->', '⇒': '=>',
+  '⟶': '-->', '⟵': '<--', '⟹': '==>', '⟸': '<==', '↔': '<->', '⇔': '<=>',
+  '←': '<-', '⇐': '<=', '↑': '^', '↓': 'v', '↗': '/^', '↘': '\\v', '↙': 'v/', '↖': '^\\',
+  '▶': '>', '►': '>', '◀': '<', '◄': '<', '▲': '^', '▼': 'v',
+
+  // Box Drawing (preserves CLI/LLM architecture diagrams in .txt notes)
+  '─': '-', '━': '-', '═': '=', '│': '|', '┃': '|', '║': '|',
+  '┌': '+', '┐': '+', '└': '+', '┘': '+', '├': '+', '┤': '+', '┬': '+', '┴': '+', '┼': '+',
+  '╔': '+', '╗': '+', '╚': '+', '╝': '+', '╠': '+', '╣': '+', '╦': '+', '╩': '+', '╬': '+',
+  '╭': '+', '╮': '+', '╰': '+', '╯': '+',
+
+  // Math, Logic & Comparisons
+  '≥': '>=', '≤': '<=', '≠': '!=', '≈': '~=', '≡': '==', '≢': '!==',
+  '√': 'sqrt', '∞': 'inf', '∑': 'sum', '∏': 'prod', '∆': 'delta', '∇': 'nabla', '∂': 'd',
+  '⁰': '^0', '¹': '^1', '²': '^2', '³': '^3', '⁴': '^4', '⁵': '^5', '⁶': '^6', '⁷': '^7', '⁸': '^8', '⁹': '^9',
+  'ⁿ': '^n', 'ᵢ': '_i', 'ⱼ': '_j',
+  '₀': '_0', '₁': '_1', '₂': '_2', '₃': '_3', '₄': '_4', '₅': '_5', '₆': '_6', '₇': '_7', '₈': '_8', '₉': '_9',
+  '∓': '-/+', '⋅': '*', '∗': '*', '−': '-', '⁄': '/',
+  '∈': 'in', '∉': 'not in', '⊂': 'subset', '⊆': 'subseteq', '∪': 'U', '∩': 'intersect',
+  '∀': 'forall', '∃': 'exists', '∅': '{}', '∧': 'AND', '∨': 'OR', '¬': 'NOT', '⊕': 'XOR',
+
+  // Hyphens & Dashes not in WinAnsi
+  '‐': '-', '‑': '-', '‒': '-', '―': '--',
+
+  // Currency
+  '₹': 'Rs.', '₿': 'BTC', '₽': 'RUB', '₺': 'TRY', '₩': 'KRW', '₫': 'VND',
+
+  // Extra Bullets & Checkmarks not in WinAnsi
+  '◦': '*', '‣': '*', '⁃': '*', '◘': '*', '○': '*', '●': '*',
+  '■': '*', '□': '*', '▪': '*', '▫': '*', '★': '*', '☆': '*', '◆': '*', '◇': '*',
+  '🔹': '*', '🔸': '*', '📌': '*', '👉': '->', '💡': '[Tip]', '🚀': '[Launch]',
+  '✅': '[v]', '✓': '[v]', '✔': '[v]', '☑': '[v]',
+  '❌': '[x]', '✗': '[x]', '✘': '[x]', '☒': '[x]',
+  '⚠': '[!]', '⚡': '[!]',
+
+  // Typographic extras not in WinAnsi
+  '′': "'", '″': '"', '‹': '<', '›': '>',
+
+  // Spaces
+  '\u00A0': ' ', '\u2002': ' ', '\u2003': ' ', '\u2009': ' ', '\u202F': ' ',
+};
+
+const INVISIBLE_CODEPOINTS = new Set([
+  0x200B, 0x200C, 0x200D, 0x2060, 0xFE0D, 0xFE0E, 0xFE0F, 0xFEFF,
+]);
+
+const fontEncodableCache = new WeakMap();
+
+function isCharEncodable(ch, font) {
+  let cache = fontEncodableCache.get(font);
+  if (!cache) {
+    cache = new Map();
+    fontEncodableCache.set(font, cache);
+  }
+  if (cache.has(ch)) return cache.get(ch);
+  let ok = false;
+  try {
+    font.encodeText(ch);
+    ok = true;
+  } catch {
+    ok = false;
+  }
+  cache.set(ch, ok);
+  return ok;
+}
+
+export function sanitizeForWinAnsi(text, font, { preserveNewlines = false } = {}) {
+  if (!text) return '';
+
+  const str = String(text)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, '    ');
+
+  let result = '';
+  for (const ch of str) {
+    if (ch === '\n') {
+      result += preserveNewlines ? '\n' : ' ';
+      continue;
+    }
+
+    const cp = ch.codePointAt(0);
+    // Strip ASCII control characters (except \n handled above) and invisible selectors/joiners
+    if (cp < 32 || cp === 127 || INVISIBLE_CODEPOINTS.has(cp)) {
+      continue;
+    }
+
+    // Preserve native WinAnsi characters (including typographic bullets, dashes, quotes, accents)
+    if (isCharEncodable(ch, font)) {
+      result += ch;
+      continue;
+    }
+
+    // Use readable ASCII transliteration if mapped
+    if (WINANSI_UNICODE_MAP[ch] !== undefined) {
+      result += WINANSI_UNICODE_MAP[ch];
+      continue;
+    }
+
+    // Attempt Unicode NFKD decomposition + diacritic stripping, verifying each decomposed char
+    const normalized = ch.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+    if (normalized) {
+      let decomposedOut = '';
+      for (const sub of normalized) {
+        if (isCharEncodable(sub, font)) {
+          decomposedOut += sub;
+        } else if (WINANSI_UNICODE_MAP[sub] !== undefined) {
+          decomposedOut += WINANSI_UNICODE_MAP[sub];
+        } else {
+          decomposedOut += '?';
+        }
+      }
+      result += decomposedOut;
+    } else {
+      result += '?';
+    }
+  }
+  return result;
+}
+
+/**
  * Parses user input ranges like '1-3, 5, 8-10' (1-indexed) into 0-indexed integers.
  */
 export function parsePageRange(rangeStr, maxPages) {
@@ -133,6 +263,7 @@ export async function clientWatermarkPdf(file, text, opacity = 0.25, fontSize = 
   const arrayBuffer = await file.arrayBuffer();
   const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
   const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const cleanText = sanitizeForWinAnsi(text, font);
 
   // Parse color hex to rgb (0-1)
   const cleanHex = colorHex.replace('#', '');
@@ -143,10 +274,10 @@ export async function clientWatermarkPdf(file, text, opacity = 0.25, fontSize = 
   const pages = pdfDoc.getPages();
   for (const page of pages) {
     const { width, height } = page.getSize();
-    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    const textWidth = font.widthOfTextAtSize(cleanText, fontSize);
     const textHeight = font.heightAtSize(fontSize);
 
-    page.drawText(text, {
+    page.drawText(cleanText, {
       x: width / 2 - textWidth / 2,
       y: height / 2 - textHeight / 2,
       size: fontSize,
@@ -347,9 +478,10 @@ export async function clientCompressPdf(file, quality = 'medium') {
  * Guarantees NO text truncation or character loss.
  */
 export async function clientTextToPdf(file) {
-  const textContent = await file.text();
+  const rawText = await file.text();
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const textContent = sanitizeForWinAnsi(rawText, font, { preserveNewlines: true });
 
   const fontSize = 10;
   const lineHeight = 14;
@@ -359,8 +491,8 @@ export async function clientTextToPdf(file) {
   const usableWidth = pageWidth - 2 * margin; // 515.28 pt
   const maxLinesPerPage = Math.floor((pageHeight - 2 * margin) / lineHeight);
 
-  // Normalize line endings and tabs
-  const rawParagraphs = textContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  // Split normalized paragraphs (newlines & tabs already normalized by sanitizeForWinAnsi)
+  const rawParagraphs = textContent.split('\n');
 
   const wrappedLines = [];
   for (const rawPara of rawParagraphs) {
@@ -693,7 +825,7 @@ export async function clientCsvToPdf(file) {
 
     const headerRow = rows[0];
     for (let c = 0; c < colCount; c++) {
-      const cellText = headerRow[c] || `Col ${c + 1}`;
+      const cellText = sanitizeForWinAnsi(headerRow[c] || `Col ${c + 1}`, fontBold);
       // Clean string truncation if wider than cell
       let displayText = cellText;
       while (displayText.length > 0 && fontBold.widthOfTextAtSize(displayText + '...', headerFontSize) > colWidth - 8) {
@@ -740,13 +872,13 @@ export async function clientCsvToPdf(file) {
     });
 
     for (let c = 0; c < colCount; c++) {
-      const val = row[c] || '';
-      let displayText = String(val);
+      const cleanVal = sanitizeForWinAnsi(row[c] || '', fontReg);
+      let displayText = cleanVal;
 
       while (displayText.length > 0 && fontReg.widthOfTextAtSize(displayText + '...', fontSize) > colWidth - 8) {
         displayText = displayText.slice(0, -1);
       }
-      if (displayText !== String(val)) displayText += '...';
+      if (displayText !== cleanVal) displayText += '...';
 
       if (displayText) {
         currentPage.drawText(displayText, {
@@ -770,12 +902,13 @@ export async function clientCsvToPdf(file) {
  * Convert Markdown (.md) documents to beautifully styled PDFs with word wrapping & pagination.
  */
 export async function clientMarkdownToPdf(file) {
-  const textContent = await file.text();
+  const rawText = await file.text();
   const pdfDoc = await PDFDocument.create();
 
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
+  const textContent = sanitizeForWinAnsi(rawText, fontReg, { preserveNewlines: true });
 
   const pageWidth = 595.28;
   const pageHeight = 841.89;
